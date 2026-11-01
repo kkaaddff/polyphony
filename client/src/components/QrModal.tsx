@@ -45,7 +45,7 @@ export function QrModal({ code, server, onClose }: QrModalProps) {
             className="rounded-lg border border-gray-100"
           />
         </div>
-        <p className="text-[10px] text-gray-400 mt-4 break-all leading-relaxed">
+        <p className="text-[10px] text-gray-500 mt-4 break-all leading-relaxed">
           {buildJoinUrl(server, code)}
         </p>
         <button

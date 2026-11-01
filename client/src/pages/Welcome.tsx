@@ -169,7 +169,7 @@ export default function Welcome() {
               autoComplete="off"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
             />
-            <p className="text-xs text-gray-400 mt-2">{t("welcome.serverHint")}</p>
+            <p className="text-xs text-gray-500 mt-2">{t("welcome.serverHint")}</p>
           </div>
 
           {tab === "create" ? (
@@ -198,7 +198,7 @@ export default function Welcome() {
               >
                 {t("welcome.createBtn")}
               </button>
-              <p className="text-xs text-gray-400">{t("welcome.webOnlyNote")}</p>
+              <p className="text-xs text-gray-500">{t("welcome.webOnlyNote")}</p>
             </div>
           ) : (
             <div className="space-y-4">

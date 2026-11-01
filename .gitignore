@@ -61,3 +61,4 @@ next-env.d.ts
 
 # 本机凭据(账号 token,绝不入库)
 /secrets/
+local-artifacts

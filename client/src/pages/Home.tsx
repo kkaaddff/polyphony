@@ -237,14 +237,14 @@ export default function Home() {
           <Link
             to="/settings"
             title={t("home.settingsLink")}
-            className="text-gray-400 hover:text-blue-600 p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-base"
+            className="text-gray-500 hover:text-blue-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-base"
           >
             ⚙
           </Link>
           <button
             onClick={logout}
             title={t("topbar.logout")}
-            className="text-gray-400 hover:text-red-500 p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-base"
+            className="text-gray-500 hover:text-red-500 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-base"
           >
             ↩
           </button>
@@ -298,7 +298,7 @@ export default function Home() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                className="flex-1 py-2.5 min-h-[44px] rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+                className="flex-1 py-2.5 min-h-tap-44 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
               >
                 {t("home.joinBtn")}
               </button>
@@ -306,7 +306,7 @@ export default function Home() {
                 type="button"
                 onClick={() => setScanOpen(true)}
                 title={t("home.scanBtnTitle")}
-                className="px-4 py-2.5 min-h-[44px] rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
+                className="px-4 py-2.5 min-h-tap-44 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
               >
                 📷 <span className="hidden sm:inline">{t("home.scanBtn")}</span>
               </button>
@@ -377,7 +377,7 @@ export default function Home() {
                       setBatch(false);
                       setSelected(new Set());
                     }}
-                    className="text-xs px-2 py-1.5 text-gray-400 hover:text-gray-600"
+                    className="text-xs px-2 py-1.5 text-gray-500 hover:text-gray-600"
                   >
                     {t("home.batchDone")}
                   </button>
@@ -397,7 +397,7 @@ export default function Home() {
           <div className="flex-1 overflow-y-auto px-2 py-2">
             {tab === "mine" ? (
               myRooms.length === 0 ? (
-                <p className="text-sm text-gray-400 py-12 text-center">
+                <p className="text-sm text-gray-500 py-12 text-center">
                   {t("home.recentEmpty")}
                 </p>
               ) : (
@@ -427,7 +427,7 @@ export default function Home() {
                             {room.code}
                           </code>
                         </button>
-                        <span className="text-xs text-gray-400 shrink-0 order-3 md:order-none w-full md:w-auto pl-1 md:pl-0">
+                        <span className="text-xs text-gray-500 shrink-0 order-3 md:order-none w-full md:w-auto pl-1 md:pl-0">
                           {room.userCount > 0 ? (
                             <span className="text-green-600">
                               ● {t("home.nOnline", { n: room.userCount })}
@@ -442,14 +442,14 @@ export default function Home() {
                           <button
                             onClick={() => setQrFor(room.code)}
                             title={t("home.showQrTitle")}
-                            className="text-gray-400 hover:text-blue-600 p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-lg"
+                            className="text-gray-500 hover:text-blue-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
                           >
                             ▦
                           </button>
                           <button
                             onClick={() => leaveSingle(room.code)}
                             title={t("home.leaveSingleTitle")}
-                            className="text-gray-400 hover:text-red-500 p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-lg"
+                            className="text-gray-500 hover:text-red-500 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
                           >
                             ✕
                           </button>
@@ -460,7 +460,7 @@ export default function Home() {
                 </ul>
               )
             ) : onlineRooms.length === 0 ? (
-              <p className="text-sm text-gray-400 py-12 text-center">
+              <p className="text-sm text-gray-500 py-12 text-center">
                 {t("home.onlineEmpty")}
               </p>
             ) : (
@@ -485,7 +485,7 @@ export default function Home() {
                       <button
                         onClick={() => setQrFor(room.code)}
                         title={t("home.showQrTitle")}
-                        className="text-gray-400 hover:text-blue-600 p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-lg shrink-0"
+                        className="text-gray-500 hover:text-blue-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg shrink-0"
                       >
                         ▦
                       </button>

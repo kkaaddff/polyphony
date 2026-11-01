@@ -1,6 +1,18 @@
 @import "tailwindcss";
 
 /*
+ * 设计 token（v3.4.2 起成文，提取自事实用量；见 local-artifacts/designs/polyphony-design-system）：
+ * - font-sans 与 body 字体栈对齐（此前工具类与 body 不同源）；
+ * - tap-38/40/44 触达下限命名化——e2e 断言的硬线，此前散在 min-h-[40px] 任意值里。
+ */
+@theme {
+  --font-sans: Arial, Helvetica, sans-serif;
+  --spacing-tap-38: 38px;
+  --spacing-tap-40: 40px;
+  --spacing-tap-44: 44px;
+}
+
+/*
  * 全局强制浅色主题：将 dark 变体重写为基于 `.dark` 类触发，
  * 取代 Tailwind v4 默认的 `prefers-color-scheme` 媒体查询策略。
  * 应用永远不会添加 `.dark` 类（<html> 使用 `.light`），
@@ -10,7 +22,7 @@
 
 body {
   background: #ffffff;
-  color: #171717;
+  color: #111827; /* = gray-900：统一主墨色（此前 #171717 与 text-gray-900 并存） */
   font-family: Arial, Helvetica, sans-serif;
   color-scheme: light;
 }
@@ -22,6 +34,6 @@ body {
  * 特异性 (0,1,1) 高于 MDXEditor CSS 模块单类 (0,1,0)，稳赢。
  */
 .mdxeditor-toolbar button {
-  min-width: 38px;
-  min-height: 38px;
+  min-width: var(--spacing-tap-38);
+  min-height: var(--spacing-tap-38);
 }

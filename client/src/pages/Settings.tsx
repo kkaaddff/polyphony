@@ -130,7 +130,7 @@ export default function Settings() {
               autoComplete="off"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
             />
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-gray-500 mt-2">
               {t("settings.serverHint1")}
               <br />
               {t("settings.serverHint2")}
@@ -163,13 +163,13 @@ export default function Settings() {
             <button
               onClick={test}
               disabled={testing}
-              className="flex-1 py-3 px-6 min-h-[44px] rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="flex-1 py-3 px-6 min-h-tap-44 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               {testing ? t("settings.testing") : t("settings.testBtn")}
             </button>
             <button
               onClick={save}
-              className="flex-1 py-3 px-6 min-h-[44px] rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg"
+              className="flex-1 py-3 px-6 min-h-tap-44 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg"
             >
               {t("settings.saveBtn")}
             </button>
@@ -178,7 +178,7 @@ export default function Settings() {
           {getSavedServer() && (
             <button
               onClick={reset}
-              className="w-full text-sm text-gray-400 hover:text-red-500 transition-colors"
+              className="w-full text-sm text-gray-500 hover:text-red-500 transition-colors"
             >
               {t("settings.clearSaved")}
             </button>

@@ -109,14 +109,14 @@ export function RoomHeader({
         <button
           onClick={copyRoomCode}
           title={t("roomHeader.copy")}
-          className="text-xs bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 transition-colors min-h-[40px]"
+          className="text-xs bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 transition-colors min-h-tap-40"
         >
           {t("roomHeader.copy")}
         </button>
         <button
           onClick={() => setShowQr(true)}
           title={t("roomHeader.qrBtnTitle")}
-          className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-[40px]"
+          className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-tap-40"
         >
           {t("roomHeader.qrBtn")}
         </button>
@@ -126,7 +126,7 @@ export function RoomHeader({
             window.dispatchEvent(new CustomEvent("polyphony:open-users"))
           }
           title={t("usersPanel.online", { n: userCount })}
-          className="md:hidden text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded hover:bg-gray-200 transition-colors min-h-[40px] flex items-center gap-1"
+          className="md:hidden text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded hover:bg-gray-200 transition-colors min-h-tap-40 flex items-center gap-1"
         >
           👥 {userCount}
         </button>
@@ -144,7 +144,7 @@ export function RoomHeader({
         </div>
         <button
           onClick={onLeave}
-          className="text-xs md:text-sm px-3 md:px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors min-h-[40px] whitespace-nowrap"
+          className="text-xs md:text-sm px-3 md:px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors min-h-tap-40 whitespace-nowrap"
         >
           {t("roomHeader.leave")}
         </button>
