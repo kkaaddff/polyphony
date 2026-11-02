@@ -5,7 +5,7 @@ import { createAccount, seedStorage } from "./helpers";
 test.describe("/welcome 创建账号", () => {
   test("创建 → token 一次性展示 → 确认进入,刷新不再展示", async ({ page }) => {
     await page.goto("/welcome");
-    await expect(page.getByRole("heading", { name: "欢迎使用复调" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "欢迎使用 Polyphony" })).toBeVisible();
 
     // 名字唯一:并发/重试下固定名会撞「已被占用」
     const name = `张三丰${Date.now().toString(36).slice(-4)}`;
@@ -18,7 +18,7 @@ test.describe("/welcome 创建账号", () => {
     const tokenText = await page.locator("code.break-all").textContent();
     expect(tokenText).toMatch(/^poly_[0-9a-f]{40,}$/);
     await page
-      .getByRole("button", { name: "我已妥善保管，进入复调" })
+      .getByRole("button", { name: "我已妥善保管，进入 Polyphony" })
       .click();
 
     // 进入首页:顶栏显示账号名

@@ -1,25 +1,26 @@
 // 首页:登录守卫、双栏一屏布局、顶栏身份、创建/加入、我的房间(批量退出)。
 import { expect, test } from "@playwright/test";
-import { captureDialogs, loginTestAccount } from "./helpers";
+import { captureDialogs, loginTestAccount, openShareSite } from "./helpers";
 
 test.describe("守卫与顶栏身份", () => {
   test("无 token:任意路由 → /welcome 引导", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/welcome\?next=%2F$/);
     await expect(
-      page.getByRole("heading", { name: "欢迎使用复调" })
+      page.getByRole("heading", { name: "欢迎使用 Polyphony" })
     ).toBeVisible();
   });
 
-  test("已登录:双栏一屏 + 右上角固定「用户名 · 服务器地址」", async ({ page }) => {
+  test("已登录:双栏一屏 + 右上角头像菜单(不展示服务器地址)", async ({ page }) => {
     const acc = await loginTestAccount(page);
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "复调", exact: true })
+      page.getByRole("heading", { name: "Polyphony", exact: true })
     ).toBeVisible();
-    // 顶栏右上角:账号名 + 服务器地址
+    // 顶栏右上角:账号名 + 头像菜单;服务器地址不再常驻展示
     await expect(page.getByText(acc.name, { exact: true })).toBeVisible();
-    await expect(page.getByText("http://localhost:3001")).toBeVisible();
+    await expect(page.getByTitle("账号菜单")).toBeVisible();
+    await expect(page.getByText("http://localhost:3001")).toHaveCount(0);
     // 双栏:左操作右列表
     await expect(
       page.getByRole("button", { name: "创建新文档" })
@@ -49,6 +50,26 @@ test.describe("守卫与顶栏身份", () => {
     await expect.poll(() => dialogs).toContain("请输入房间代码");
   });
 
+  test("扫码:无摄像头环境显式报错(不静默关闭)", async ({ page }) => {
+    // http:// 直连等环境无 getUserMedia —— 必须显示本地化错误而非无声关掉
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "mediaDevices", {
+        value: undefined,
+        configurable: true,
+      });
+    });
+    await loginTestAccount(page);
+    await page.goto("/");
+    await page.getByTitle("扫房间二维码直接加入").click();
+    await expect(
+      page.getByText("当前环境不支持摄像头（需 HTTPS 或 App）")
+    ).toBeVisible();
+    await page.getByRole("button", { name: "知道了" }).click();
+    await expect(
+      page.getByText("当前环境不支持摄像头（需 HTTPS 或 App）")
+    ).toBeHidden();
+  });
+
   test("房间码加入 → 编辑器", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
@@ -64,7 +85,8 @@ test.describe("我的房间(服务端房间簿)", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
     await expect(page).toHaveURL(/\/editor/);
-    await page.getByRole("button", { name: "退出房间" }).click();
+    await page.getByTitle("在线用户与更多操作").click();
+    await page.getByRole("menuitem", { name: "退出房间" }).click();
     // 回首页:房间已登记(未命名 + 随机码行)
     await expect(
       page.getByText("未命名文档", { exact: true })
@@ -116,11 +138,23 @@ test.describe("我的房间(服务端房间簿)", () => {
     await expect(page.getByText("批量BATCH002")).toHaveCount(0);
   });
 
-  test("退出登录:confirm 后清 token 回引导页", async ({ page }) => {
+  test("退出登录:头像菜单 confirm 后清 token 回引导页", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
     page.once("dialog", (d) => d.accept());
-    await page.getByTitle("退出登录").click();
+    await page.getByTitle("账号菜单").click();
+    await page.getByRole("menuitem", { name: "退出登录" }).click();
     await expect(page).toHaveURL(/\/welcome/);
+  });
+
+  test("分享本站:头像菜单 → 弹层展示服务器地址二维码", async ({ page }) => {
+    await loginTestAccount(page);
+    await page.goto("/");
+    await openShareSite(page);
+    await expect(page.getByText("http://localhost:3001")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByRole("heading", { name: "扫码访问本站" })
+    ).toBeHidden();
   });
 });

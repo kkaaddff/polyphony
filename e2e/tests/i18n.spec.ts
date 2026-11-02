@@ -35,6 +35,6 @@ test.describe("i18n 语言", () => {
   test("locale 跟随系统(zh-CN runner)默认中文", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "复调", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Polyphony", exact: true })).toBeVisible();
   });
 });

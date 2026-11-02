@@ -1,6 +1,6 @@
 // 设置页：测试连接、协议头补全、保存/清除/返回（登录态之下）。
 import { expect, test } from "@playwright/test";
-import { loginTestAccount, seedStorage } from "./helpers";
+import { loginTestAccount, openShareSite, seedStorage } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   // 设置页在登录守卫之后:全部用例先注入测试账号 token
@@ -48,7 +48,10 @@ test.describe("保存 / 清除 / 返回", () => {
     await page.locator("#serverUrl").fill("http://localhost:3001");
     await page.getByRole("button", { name: "保存并返回" }).click();
     await expect(page).toHaveURL("/");
-    await expect(page.getByText("http://localhost:3001").first()).toBeVisible();
+    // 顶栏不再常驻展示地址;经头像菜单「分享本站」弹层确认当前服务器
+    await openShareSite(page);
+    await expect(page.getByText("http://localhost:3001")).toBeVisible();
+    await page.keyboard.press("Escape");
     const saved = await page.evaluate(() => localStorage.getItem("polyphony.server"));
     expect(saved).toBe("http://localhost:3001");
   });
@@ -66,7 +69,9 @@ test.describe("保存 / 清除 / 返回", () => {
     await page.getByRole("button", { name: "保存并返回" }).click();
     // 清除后的回落：dev 环境取 VITE_SERVER_URL（client/.env.local = :3001）；
     // 生产构建无该 env 才回落 location.origin（同源）
-    await expect(page.getByText("http://localhost:3001").first()).toBeVisible();
+    await openShareSite(page);
+    await expect(page.getByText("http://localhost:3001")).toBeVisible();
+    await page.keyboard.press("Escape");
   });
 
   test("← 返回首页：不保存直接退出", async ({ page }) => {
@@ -78,9 +83,10 @@ test.describe("保存 / 清除 / 返回", () => {
     expect(saved).toBeNull();
   });
 
-  test("首页「设置」入口可达", async ({ page }) => {
+  test("首页头像菜单「设置」入口可达", async ({ page }) => {
     await page.goto("/");
-    await page.getByTitle("设置").click();
+    await page.getByTitle("账号菜单").click();
+    await page.getByRole("menuitem", { name: "设置" }).click();
     await expect(page).toHaveURL("/settings");
     await expect(page.getByRole("heading", { name: "设置" })).toBeVisible();
   });

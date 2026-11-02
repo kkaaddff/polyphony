@@ -1,12 +1,12 @@
 // 验收截图生成器 v3.4.2 —— 复刻 acceptance-v3.4.1 的 13 个场景(PC 1440×900 / Pixel 7 仿真)。
-// 前置::3001 与 :5173 已运行;产物写 local-artifacts/acceptance-v3.4.2/{pc,phone}/。
+// 前置::3001 与 :5173 已运行;产物写 local-artifacts/acceptance-v3.5.0/{pc,phone}/。
 // 与 ui-*.spec 不同:这是演示/验收工具,不入测试套件,不进 CI。
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 const BASE = "http://localhost:5173";
 const API = "http://localhost:3001";
-const OUT = "/Users/qc/Documents/polyphony/local-artifacts/acceptance-v3.4.2";
+const OUT = "/Users/qc/Documents/polyphony/local-artifacts/acceptance-v3.5.0";
 mkdirSync(`${OUT}/pc`, { recursive: true });
 mkdirSync(`${OUT}/phone`, { recursive: true });
 
@@ -71,7 +71,7 @@ try {
   {
     const { ctx, page } = await newCtx(browser);
     await page.goto(`${BASE}/welcome`);
-    await page.getByRole("heading", { name: "欢迎使用复调" }).waitFor();
+    await page.getByRole("heading", { name: "欢迎使用 Polyphony" }).waitFor();
     await shot(page, "pc/01-welcome-创建账号.png");
     // 02 切到粘贴 token 登录
     await page.getByRole("button", { name: "已有账号 · 粘贴 token" }).click();
@@ -172,15 +172,17 @@ try {
     await c.page.waitForTimeout(600);
     await shot(c.page, "phone/03-editor-协同两人.png");
 
-    // 04 在线用户抽屉(👥)
-    await c.page.getByRole("button", { name: /👥/ }).click();
+    // 04 在线用户底部面板(人数菜单 → 在线用户)
+    await c.page.getByTitle(/在线用户/).click();
+    await c.page.getByRole("menuitem", { name: /在线用户/ }).click();
     await c.page.getByRole("heading", { name: /在线用户/ }).first().waitFor();
     await c.page.waitForTimeout(300);
-    await shot(c.page, "phone/04-editor-在线用户抽屉.png");
-    await c.page.keyboard.press("Escape");
+    await shot(c.page, "phone/04-editor-在线用户面板.png");
+    await c.page.locator(".fixed.inset-0").getByTitle("关闭").click();
 
-    // 05 二维码弹层
-    await c.page.getByRole("button", { name: "二维码" }).click();
+    // 05 二维码弹层(人数菜单 → 发送邀请)
+    await c.page.getByTitle(/在线用户/).click();
+    await c.page.getByRole("menuitem", { name: "发送邀请" }).click();
     await c.page.getByRole("heading", { name: "扫码进房" }).waitFor();
     await c.page.waitForTimeout(300);
     await shot(c.page, "phone/05-editor-二维码弹层.png");
@@ -210,7 +212,7 @@ try {
   {
     const { ctx, page } = await newCtx(browser, { mobile: true });
     await page.goto(`${BASE}/welcome`);
-    await page.getByRole("heading", { name: "欢迎使用复调" }).waitFor();
+    await page.getByRole("heading", { name: "欢迎使用 Polyphony" }).waitFor();
     await page.getByRole("button", { name: "已有账号 · 粘贴 token" }).click();
     await page.getByText("登录 token").waitFor();
     await shot(page, "phone/07-welcome-已有账号.png");

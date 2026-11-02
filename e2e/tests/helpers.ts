@@ -86,3 +86,12 @@ export function captureDialogs(page: import("@playwright/test").Page) {
   });
   return messages;
 }
+
+/** 首页头像菜单 → 分享本站:打开弹层(服务器地址现只在弹层/设置里可见)。 */
+export async function openShareSite(page: import("@playwright/test").Page) {
+  await page.getByTitle("账号菜单").click();
+  await page.getByRole("menuitem", { name: "分享本站" }).click();
+  const heading = page.getByRole("heading", { name: "扫码访问本站" });
+  await heading.waitFor();
+  return heading;
+}

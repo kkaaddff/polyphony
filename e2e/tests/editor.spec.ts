@@ -1,4 +1,4 @@
-// 编辑器：直达守卫、顶栏操作（复制/二维码/重命名/退出）、双端协同收敛。
+// 编辑器：直达守卫、顶栏操作（房间码点击复制/发送邀请/重命名/人数菜单退出）、双端协同收敛。
 // 并行隔离：每个用例独立账号 + 独立房间码（WS 强制 token 鉴权）。
 import { expect, test, type Page } from "@playwright/test";
 import { createAccount, seedStorage } from "./helpers";
@@ -21,53 +21,52 @@ test.describe("路由守卫与退出", () => {
     await expect(page).toHaveURL("/");
   });
 
-  test("退出房间 → 回首页", async ({ page }) => {
+  test("退出房间(人数菜单) → 回首页", async ({ page }) => {
     const { token } = await createAccount();
     await openEditor(page, uniqRoom("EXIT"), "张三", token);
-    await page.getByRole("button", { name: "退出房间" }).click();
+    await page.getByTitle("在线用户与更多操作").click();
+    await page.getByRole("menuitem", { name: "退出房间" }).click();
     await expect(page).toHaveURL("/");
   });
 });
 
 test.describe("顶栏", () => {
-  test("复制房间码：alert 反馈 + 剪贴板内容正确", async ({ page }) => {
+  test("点击房间码复制：toast 反馈 + 剪贴板内容正确", async ({ page }) => {
     const { token } = await createAccount();
     const code = uniqRoom("COPY");
-    const dialogs: string[] = [];
-    page.on("dialog", (d) => {
-      dialogs.push(d.message());
-      void d.accept();
-    });
     await openEditor(page, code, "张三", token);
-    await page.getByRole("button", { name: "复制" }).click();
-    await expect.poll(() => dialogs).toContain("房间代码已复制到剪贴板");
+    // 房间码本身即复制按钮(不再有独立「复制」按钮)
+    await page.getByRole("button", { name: code }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "房间号已复制" })
+    ).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
   });
 
-  test("无 clipboard API（http 直连场景）：降级复制仍给出反馈", async ({ page }) => {
+  test("无 clipboard API（http 直连场景）：降级复制仍有 toast 反馈", async ({ page }) => {
     const { token } = await createAccount();
-    const dialogs: string[] = [];
-    page.on("dialog", (d) => {
-      dialogs.push(d.message());
-      void d.accept();
-    });
     await page.addInitScript(() => {
       // 模拟非安全上下文（http://IP）：navigator.clipboard 不存在
       Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     });
-    await openEditor(page, uniqRoom("NOC"), "张三", token);
-    await page.getByRole("button", { name: "复制" }).click();
-    // 不能无反馈/抛错：降级 execCommand 或手动复制提示
-    await expect
-      .poll(() => dialogs, { timeout: 5_000 })
-      .toContain("房间代码已复制到剪贴板");
+    const code = uniqRoom("NOC");
+    await openEditor(page, code, "张三", token);
+    await page.getByRole("button", { name: code }).click();
+    // 不能无反馈/抛错：降级 execCommand 路径给出同样的 toast
+    await expect(
+      page.getByRole("status").filter({ hasText: "房间号已复制" })
+    ).toBeVisible();
   });
 
-  test("二维码：URL 载荷含 code 与 server；ESC/遮罩/按钮三种关闭", async ({ page }) => {
+  test("发送邀请(人数菜单)：URL 载荷含 code 与 server；ESC/遮罩/按钮三种关闭", async ({ page }) => {
     const { token } = await createAccount();
     const code = uniqRoom("QRM");
     await openEditor(page, code, "张三", token);
-    await page.getByRole("button", { name: "二维码" }).click();
+    const openInvite = async () => {
+      await page.getByTitle("在线用户与更多操作").click();
+      await page.getByRole("menuitem", { name: "发送邀请" }).click();
+    };
+    await openInvite();
     await expect(page.getByRole("heading", { name: "扫码进房" })).toBeVisible();
     await expect(
       page.getByText(new RegExp(`/join\\?code=${code}&server=http%3A%2F%2Flocalhost%3A3001`))
@@ -79,11 +78,11 @@ test.describe("顶栏", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("heading", { name: "扫码进房" })).toBeHidden();
 
-    await page.getByRole("button", { name: "二维码" }).click();
+    await openInvite();
     await page.getByRole("button", { name: "关闭" }).click();
     await expect(page.getByRole("heading", { name: "扫码进房" })).toBeHidden();
 
-    await page.getByRole("button", { name: "二维码" }).click();
+    await openInvite();
     await page.mouse.click(8, 400); // 点遮罩
     await expect(page.getByRole("heading", { name: "扫码进房" })).toBeHidden();
   });
@@ -98,7 +97,8 @@ test.describe("顶栏", () => {
     await input.press("Enter");
     await expect(page.getByRole("button", { name: "接口设计评审" })).toBeVisible();
 
-    await page.getByRole("button", { name: "退出房间" }).click();
+    await page.getByTitle("在线用户与更多操作").click();
+    await page.getByRole("menuitem", { name: "退出房间" }).click();
     // 服务端房间簿登记后首页展示(网络 + 500ms 防抖,放宽等待)
     await expect(
       page.getByRole("button", { name: /接口设计评审/ })

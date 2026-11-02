@@ -71,7 +71,7 @@ async function seedThreeRooms(page: Page, token: string) {
 test.describe("/welcome(移动)", () => {
   test("创建表单:不破版、按钮可见可点", async ({ page }) => {
     await page.goto("/welcome");
-    await expect(page.getByRole("heading", { name: "欢迎使用复调" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "欢迎使用 Polyphony" })).toBeVisible();
     await expectNoBreakout(page);
     await expectButtonsInView(page);
     await expectTapSize(page, ["新建账号", "已有账号 · 粘贴 token"]);
@@ -96,6 +96,11 @@ test.describe("首页(移动单列)", () => {
     await expect(page.getByText("移动MOBROOM1")).toBeVisible({ timeout: 10_000 });
     await expectNoBreakout(page);
     await expectButtonsInView(page);
+
+    // 移动端顶栏不显示品牌名(左上角留给内容;品牌在 welcome 页呈现)
+    await expect(
+      page.getByRole("heading", { name: "Polyphony", exact: true })
+    ).toBeHidden();
 
     // 单列:创建按钮占满视口宽度(≥90%)
     const vw = page.viewportSize()!.width;
@@ -139,7 +144,7 @@ test.describe("首页(移动单列)", () => {
 });
 
 test.describe("编辑器(移动)", () => {
-  test("整页零横溢(曾溢出 51px);工具栏收进内部滚动;退出房间可点(曾被遮挡)", async ({ page }) => {
+  test("整页零横溢(曾溢出 51px);工具栏双行换行无内滚;退出房间可达(人数菜单)", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
@@ -148,9 +153,12 @@ test.describe("编辑器(移动)", () => {
     await expectNoBreakout(page); // 核心回归:曾整页可左右晃
     await expectButtonsInView(page);
 
-    // MDX 工具栏存在且自身可横向滚动(而非撑破页面)
+    // MDX 工具栏存在且双行换行 —— 自身无横向滚动(flex-wrap,而非撑破页面)
     const toolbar = page.locator(".mdxeditor-toolbar").first();
     await expect(toolbar).toBeVisible();
+    expect(
+      await toolbar.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
+    ).toBe(true);
 
     // 工具栏图标按钮触达:第三方原生 28px,移动端应抬到 ≥38px(真机 audit 发现)
     const tapSides = await page
@@ -165,28 +173,40 @@ test.describe("编辑器(移动)", () => {
     expect(visible.length).toBeGreaterThan(0);
     expect(Math.min(...visible), "工具栏按钮触达过小").toBeGreaterThanOrEqual(38);
 
-    // 交互级回归:「退出房间」曾被子元素遮挡点不动,必须真实可点
-    await page.getByRole("button", { name: "退出房间" }).click();
+    // 交互级回归:「退出房间」收敛进人数菜单后仍必须真实可达;人数按钮自身触达 ≥38
+    const countBtn = page.getByTitle(/在线用户/);
+    const cb = await countBtn.boundingBox();
+    expect(Math.min(cb!.width, cb!.height), "人数按钮触达过小").toBeGreaterThanOrEqual(38);
+    await countBtn.click();
+    await page.getByRole("menuitem", { name: "退出房间" }).click();
     await expect(page).toHaveURL("/");
   });
 
-  test("在线用户抽屉:👥 打开 → 列表可见 → ESC 关闭", async ({ page }) => {
+  test("在线用户底部面板:人数菜单打开 → 列表可见 → ESC/关闭按钮", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
     await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 20_000 });
 
-    // 移动端常驻侧栏应隐藏,改由顶栏 👥 打开抽屉
+    // 移动端常驻侧栏应隐藏,改由顶栏人数菜单进入底部面板
     const usersText = page.getByText(/在线用户 \(1\)/);
     await expect(usersText).toBeHidden();
 
+    const sheet = page.locator(".fixed.inset-0");
     await page.getByTitle(/在线用户/).click();
-    const drawerText = page.locator(".fixed.inset-0");
-    await expect(drawerText.getByText(/在线用户 \(1\)/)).toBeVisible();
+    await page.getByRole("menuitem", { name: /在线用户 \(1\)/ }).click();
+    await expect(sheet.getByText(/在线用户 \(1\)/)).toBeVisible();
     await expectNoBreakout(page);
 
     await page.keyboard.press("Escape");
-    await expect(drawerText).toHaveCount(0);
+    await expect(sheet).toHaveCount(0);
+
+    // 重开 → 显式关闭按钮
+    await page.getByTitle(/在线用户/).click();
+    await page.getByRole("menuitem", { name: /在线用户 \(1\)/ }).click();
+    await expect(sheet.getByText(/在线用户 \(1\)/)).toBeVisible();
+    await sheet.getByTitle("关闭").click();
+    await expect(sheet).toHaveCount(0);
   });
 
   test("二维码弹层在移动端不破版", async ({ page }) => {
@@ -194,7 +214,8 @@ test.describe("编辑器(移动)", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
     await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "二维码" }).click();
+    await page.getByTitle(/在线用户/).click();
+    await page.getByRole("menuitem", { name: "发送邀请" }).click();
     await expect(page.getByRole("heading", { name: "扫码进房" })).toBeVisible();
     await expectNoBreakout(page);
   });
