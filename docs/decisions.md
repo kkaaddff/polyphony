@@ -33,6 +33,7 @@
 | 26 | 房间名登记不加防抖 | 实踩：改名后 <500ms 退出编辑器，防抖定时器被卸载取消，服务端房间名丢失；改名本身离散触发，两次 POST 成本可忽略 |
 | 28 | Android 固定 debug 签名（v3.4.1）：keystore 存 GitHub secret，CI 构建前恢复到 `~/.android/debug.keystore` | 实踩：GitHub runner 每次现生成一次性 debug keystore，APK 签名互不匹配，每次发版只能卸载重装。PKCS12 用 openssl 本地生成（alias `androiddebugkey`/口令 `android`，JDK9+ 的 JKS 加载器自动识别），base64 进 secret `ANDROID_DEBUG_KEYSTORE_BASE64`；本地备份 `secrets/android-debug.keystore`（gitignored）。放弃提交进仓库：GitHub 仓公开，签名材料不可入库 |
 | 29 | 顶部安全区：`viewport-fit=cover` + 页面根 `pt-[env(safe-area-inset-top)] box-border`（v3.4.1） | targetSdk≥35 强制 edge-to-edge，WebView 延伸进状态栏压住顶栏。按页根加而非 `#root` 统一加：`box-border` 让 padding 计入 `h-screen`/`min-h-screen`，不产生整页滚动；桌面/测试浏览器 env()=0 零影响，e2e 断言不变 |
+| 30 | UI 精简（v3.5.0，验收评审驱动）：品牌去中文（仅 UI 串/窗口/托盘）、首页设置收敛进头像菜单、编辑器顶栏收敛为「👥 n ▾」菜单 + 房间号点击复制（toast）、工具栏双行换行、在线用户底部面板、IME `interactive-widget=resizes-content` | localStorage 键/`polyphony:open-users` 事件名/仓库名不动（迁移成本）；软键盘走 Web 标准方案，manifest `adjustResize` 仅兜底且必须打在 `<activity>` 上（写 `<application>` 静默失效）；toast 手写不引依赖，`pointer-events-none` 不挡 e2e 点击 |
 
 ## 坑清单（按"再遇到怎么识别"组织）
 
