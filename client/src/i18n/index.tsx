@@ -71,7 +71,7 @@ export function useT(): { t: (key: TKey, params?: Record<string, string | number
   useEffect(() => {
     document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
     document.title =
-      locale === "zh" ? "复调 · 实时协同文档" : "Polyphony · Realtime Docs";
+      `Polyphony · ${locale === "zh" ? "实时协同文档" : "Realtime Docs"}`;
   }, [locale]);
 
   return { t, locale };

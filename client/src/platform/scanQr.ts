@@ -20,7 +20,8 @@ export async function nativeScanQr(): Promise<string | null> {
 
 export async function getCameraStream(): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("当前环境不支持摄像头（需 HTTPS 或 App）");
+    // 稳定错误码,由 ScanModal 映射为本地化文案(scanModal.noCamera)
+    throw new Error("ERR_NO_CAMERA");
   }
   return navigator.mediaDevices.getUserMedia({
     video: { facingMode: { ideal: "environment" } },

@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover：Android 15+ edge-to-edge 下 WebView 延伸进状态栏，
-         配合各页面根 pt-[env(safe-area-inset-top)] 留出顶部安全区（桌面/浏览器 env=0 无影响） -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+         配合各页面根 pt-[env(safe-area-inset-top)] 留出顶部安全区（桌面/浏览器 env=0 无影响）。
+         interactive-widget=resizes-content（Chromium/WebView 108+）：软键盘弹出时压缩布局视口而非
+         整页上推 —— h-screen 根收缩、顶栏钉住、只有编辑区被压缩；旧 WebView 优雅回落原行为。
+         Android App 侧另有 android-patch.mjs 的 windowSoftInputMode=adjustResize 兜底 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <link rel="icon" href="/favicon.ico" />
     <!-- 中性占位：首帧 JS 按 locale 覆盖 title 与 lang（i18n/index.tsx） -->
     <title>Polyphony</title>

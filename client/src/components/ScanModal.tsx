@@ -39,8 +39,14 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
         if (cancelled) return;
         if (text) onResult(text);
         else onClose();
-      } catch {
-        if (!cancelled) onClose();
+      } catch (e) {
+        // 原生扫码失败不再静默关闭(用户只会觉得「按钮没反应」),显式报错。
+        if (!cancelled)
+          setError(
+            t("scanModal.nativeFail", {
+              msg: e instanceof Error ? e.message : String(e),
+            })
+          );
       }
     })();
     return () => {
@@ -75,8 +81,11 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
         };
         raf = requestAnimationFrame(tick);
       } catch (e) {
+        // ERR_NO_CAMERA:环境无 getUserMedia(http:// 直连等),走本地化文案;
+        // 其余(权限拒绝等)透传浏览器消息。
+        const msg = e instanceof Error ? e.message : "";
         setError(
-          e instanceof Error ? e.message : t("scanModal.cameraFallback")
+          msg === "ERR_NO_CAMERA" ? t("scanModal.noCamera") : msg || t("scanModal.cameraFallback")
         );
       }
     })();

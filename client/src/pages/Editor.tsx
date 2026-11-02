@@ -12,6 +12,7 @@ import { useT } from "@/i18n";
 import { createEditorPlugins } from "@/components/editorConfig";
 import { RoomHeader } from "@/components/RoomHeader";
 import { UsersPanel } from "@/components/UsersPanel";
+import { CloseIcon } from "@/components/icons";
 import { User } from "@/types";
 
 /** useCollaboration 置出的稳定错误码 → 文案键（渲染层翻译）。 */
@@ -211,7 +212,7 @@ export default function Editor() {
                 // 工具栏内部横向滚动:窄屏不再裁切按钮、不撑破页面。
                 // 注意:必须是单行字符串——MDXEditor 按空格拆分后逐个 classList.add,内嵌换行会抛 InvalidCharacterError 炸整棵树;
                 // 工具栏按钮 38px 触达在 index.css 全局覆盖(元素后代任意变体在 Tailwind v4 下生成却不生效,勿再尝试)
-                className="h-full dark:[&_.mdxeditor-toolbar]:bg-gray-800 [&_.mdxeditor-toolbar]:bg-white [&_.mdxeditor-toolbar]:overflow-x-auto [&_.mdxeditor-toolbar]:max-w-full"
+                className="h-full dark:[&_.mdxeditor-toolbar]:bg-gray-800 [&_.mdxeditor-toolbar]:bg-white [&_.mdxeditor-toolbar]:max-w-full"
                 spellCheck={true}
               />
             </div>
@@ -224,17 +225,29 @@ export default function Editor() {
         </div>
       </div>
 
-      {/* 移动端在线用户抽屉(遮罩 + 右滑面板) */}
+      {/* 移动端在线用户底部面板(遮罩 + ~40% 高度上滑;显式关闭按钮) */}
       {usersDrawer && (
         <div
           className="fixed inset-0 z-50 bg-black/40 md:hidden"
           onClick={() => setUsersDrawer(false)}
         >
           <div
-            className="absolute right-0 top-0 h-full w-72 bg-white dark:bg-gray-800 shadow-2xl pt-[env(safe-area-inset-top)] box-border"
+            className="absolute inset-x-0 bottom-0 h-[40vh] bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl flex flex-col pb-[env(safe-area-inset-bottom)] box-border"
             onClick={(e) => e.stopPropagation()}
           >
-            <UsersPanel users={users} />
+            <div className="flex justify-end px-2 pt-2 shrink-0">
+              <button
+                onClick={() => setUsersDrawer(false)}
+                title={t("common.close")}
+                aria-label={t("common.close")}
+                className="p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-gray-500 hover:text-gray-700"
+              >
+                <CloseIcon className="size-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <UsersPanel users={users} />
+            </div>
           </div>
         </div>
       )}

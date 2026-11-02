@@ -20,6 +20,8 @@ export const en = {
   home: {
     taglineLine: "Many voices. One score. — Realtime collaborative document editing",
     settingsLink: "Settings",
+    accountMenuTitle: "Account menu",
+    shareSite: "Share this site",
     username: "Username",
     usernamePlaceholder: "Enter your name (remembered for next time)",
     createTitle: "Create a new document",
@@ -137,11 +139,11 @@ export const en = {
     room: "Room:",
     roomNamePlaceholder: "Room name",
     renameTitle: "Click to rename this room",
-    copy: "Copy",
-    copyOk: "Room code copied to clipboard",
+    copyOk: "Room code copied",
     copyFail: "Copy failed — room code: {code}",
-    qrBtn: "QR",
-    qrBtnTitle: "Show room QR code (scan to join on phone)",
+    copyCodeTitle: "Tap to copy the room code",
+    countBtnTitle: "Online users and more",
+    invite: "Send invite",
     connected: "Connected",
     disconnected: "Offline",
     leave: "Leave room",
@@ -153,14 +155,17 @@ export const en = {
 
   qrModal: {
     title: "Scan to join",
+    siteTitle: "Scan to open this site",
     desc: "Scan with a phone camera or the app to join {code}",
   },
 
   scanModal: {
     cameraFallback: "Cannot access the camera — check permissions",
+    noCamera: "Camera is unavailable here (HTTPS or the app is required)",
     httpsHint: "Browser scanning requires HTTPS; when connecting to http://IP directly, use the system camera or the app.",
     gotIt: "Got it",
     nativeStarting: "Starting native scanner...",
+    nativeFail: "Could not start the scanner: {msg}",
     aim: "Point the camera at the QR code",
   },
 

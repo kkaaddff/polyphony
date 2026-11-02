@@ -85,7 +85,7 @@ fn show_main(app: &AppHandle) {
 #[tauri::command]
 fn set_recent_rooms(app: AppHandle, rooms: Vec<RecentRoom>, locale: String) -> Result<(), String> {
     let menu = build_menu(&app, &rooms, &locale).map_err(|e| e.to_string())?;
-    let tooltip = if locale == "en" { "Polyphony" } else { "复调 Polyphony" };
+    let tooltip = "Polyphony";
     let tray = &app.state::<TrayState>().tray;
     tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
     tray.set_menu(Some(menu))
@@ -113,7 +113,7 @@ pub fn run() {
                 let menu = build_menu(&handle, &[], "zh")?;
                 let tray = TrayIconBuilder::with_id("polyphony-tray")
                     .icon(handle.default_window_icon().unwrap().clone())
-                    .tooltip("复调 Polyphony")
+                    .tooltip("Polyphony")
                     .menu(&menu)
                     .on_menu_event(|app, event| match event.id.as_ref() {
                         "new" => {

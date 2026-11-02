@@ -1,8 +1,13 @@
-// 顶栏:房间名(就地重命名)+ 房间码复制 + 二维码 + 在线用户 + 连接状态 + 退出。
+// 顶栏:房间名(就地重命名)+ 房间码(点击复制,toast 反馈)+ 连接状态 + 「👥 n」菜单
+// (发送邀请 / 退出房间;移动端首项「在线用户」开底部面板)。v3.5.0 起独立按钮全部收敛进菜单。
 // 响应式:flex-wrap 两行式——移动端不再挤压;曾因元素重叠导致「退出房间」点不动。
 import { useState } from "react";
 import { QrModal } from "@/components/QrModal";
+import { Menu, MenuItem } from "@/components/Menu";
+import { ChevronDownIcon } from "@/components/icons";
+import { useToast } from "@/components/Toast";
 import { getServerBase } from "@/lib/serverConfig";
+import { buildJoinUrl } from "@/lib/qr";
 import { useT } from "@/i18n";
 
 interface RoomHeaderProps {
@@ -23,6 +28,7 @@ export function RoomHeader({
   onLeave,
 }: RoomHeaderProps) {
   const { t } = useT();
+  const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [showQr, setShowQr] = useState(false);
@@ -52,17 +58,18 @@ export function RoomHeader({
         document.execCommand("copy");
         ta.remove();
       }
-      alert(t("roomHeader.copyOk"));
+      toast.show(t("roomHeader.copyOk"), "success");
     } catch {
-      alert(t("roomHeader.copyFail", { code: roomCode }));
+      toast.show(t("roomHeader.copyFail", { code: roomCode }), "error");
     }
   };
 
   return (
     <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 md:px-6 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-      {/* 左组:品牌 + 房间名/码/复制(可收缩,长名 truncate) */}
+      {/* 左组:品牌 + 房间名/码(可收缩,长名 truncate) */}
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <h1 className="text-lg md:text-xl font-bold text-gray-900 dark:text-white shrink-0">
+        {/* 品牌:桌面显示;移动端隐藏(顶栏空间留给房间名/码,品牌在 welcome 页呈现) */}
+        <h1 className="hidden md:block text-lg md:text-xl font-bold text-gray-900 dark:text-white shrink-0">
           {t("common.appName")}
         </h1>
         <span className="text-sm text-gray-600 dark:text-gray-400 shrink-0 hidden sm:inline">
@@ -98,38 +105,19 @@ export function RoomHeader({
               {roomName || t("common.unnamedDoc")}
             </button>
           )}
-          <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs md:text-sm font-mono text-gray-900 dark:text-white shrink-0">
+          {/* 房间码即复制按钮:点一下 → toast「房间号已复制」(不再设独立复制按钮) */}
+          <button
+            onClick={copyRoomCode}
+            title={t("roomHeader.copyCodeTitle")}
+            className="bg-gray-100 dark:bg-gray-700 px-2 rounded text-xs md:text-sm font-mono text-gray-900 dark:text-white shrink-0 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-tap-38 flex items-center"
+          >
             {roomCode}
-          </code>
+          </button>
         </div>
       </div>
 
-      {/* 右组:操作(不收缩,独立成行也不重叠) */}
+      {/* 右组:连接状态 + 人数菜单(不收缩,独立成行也不重叠) */}
       <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
-        <button
-          onClick={copyRoomCode}
-          title={t("roomHeader.copy")}
-          className="text-xs bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 transition-colors min-h-tap-40"
-        >
-          {t("roomHeader.copy")}
-        </button>
-        <button
-          onClick={() => setShowQr(true)}
-          title={t("roomHeader.qrBtnTitle")}
-          className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-tap-40"
-        >
-          {t("roomHeader.qrBtn")}
-        </button>
-        {/* 在线用户(移动端点开抽屉;桌面纯指示) */}
-        <button
-          onClick={() =>
-            window.dispatchEvent(new CustomEvent("polyphony:open-users"))
-          }
-          title={t("usersPanel.online", { n: userCount })}
-          className="md:hidden text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded hover:bg-gray-200 transition-colors min-h-tap-40 flex items-center gap-1"
-        >
-          👥 {userCount}
-        </button>
         <div className="flex items-center gap-1.5 px-1">
           <div
             className={`w-2 h-2 rounded-full ${
@@ -142,18 +130,38 @@ export function RoomHeader({
               : t("roomHeader.disconnected")}
           </span>
         </div>
-        <button
-          onClick={onLeave}
-          className="text-xs md:text-sm px-3 md:px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors min-h-tap-40 whitespace-nowrap"
+        <Menu
+          buttonTitle={t("roomHeader.countBtnTitle")}
+          buttonClassName="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-tap-40 flex items-center gap-1"
+          buttonContent={
+            <>
+              👥 {userCount} <ChevronDownIcon className="size-3.5" />
+            </>
+          }
         >
-          {t("roomHeader.leave")}
-        </button>
+          {/* 移动端:在线用户列表收进底部面板;桌面常驻侧栏无需此项 */}
+          <MenuItem
+            className="md:hidden"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("polyphony:open-users"))
+            }
+          >
+            {t("usersPanel.online", { n: userCount })}
+          </MenuItem>
+          <MenuItem onClick={() => setShowQr(true)}>
+            {t("roomHeader.invite")}
+          </MenuItem>
+          <MenuItem onClick={onLeave} className="text-red-600">
+            {t("roomHeader.leave")}
+          </MenuItem>
+        </Menu>
       </div>
 
       {showQr && (
         <QrModal
-          code={roomCode}
-          server={getServerBase()}
+          url={buildJoinUrl(getServerBase(), roomCode)}
+          title={t("qrModal.title")}
+          desc={t("qrModal.desc", { code: roomCode })}
           onClose={() => setShowQr(false)}
         />
       )}

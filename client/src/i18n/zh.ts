@@ -2,7 +2,7 @@
 // 键名约定：<页面/组件>.<语义名>；插值用 {name} 占位。
 export const zh = {
   common: {
-    appName: "复调",
+    appName: "Polyphony",
     taglineShort: "多个声部，一份总谱。",
     close: "关闭",
     cancel: "取消",
@@ -15,6 +15,8 @@ export const zh = {
   home: {
     taglineLine: "多个声部，一份总谱。—— 实时协同编辑，支持多用户同时编写文档",
     settingsLink: "设置",
+    accountMenuTitle: "账号菜单",
+    shareSite: "分享本站",
     username: "用户名",
     usernamePlaceholder: "输入您的用户名（下次自动带出）",
     createTitle: "创建新文档",
@@ -97,7 +99,7 @@ export const zh = {
   },
 
   welcome: {
-    title: "欢迎使用复调",
+    title: "欢迎使用 Polyphony",
     subtitle: "多个声部，一份总谱。—— 开始之前，先登录你的账号",
     createTab: "新建账号",
     loginTab: "已有账号 · 粘贴 token",
@@ -112,7 +114,7 @@ export const zh = {
     tokenWarn: "请立即保管你的登录 token —— 仅此一次展示，离开本页后无法再查看。丢失只能重新创建账号。",
     copy: "复制",
     copied: "已复制",
-    confirmBtn: "我已妥善保管，进入复调",
+    confirmBtn: "我已妥善保管，进入 Polyphony",
     loginLabel: "登录 token",
     loginPlaceholder: "粘贴以 poly_ 开头的 token",
     loginBtn: "验证并登录",
@@ -132,11 +134,11 @@ export const zh = {
     room: "房间:",
     roomNamePlaceholder: "输入房间名",
     renameTitle: "点击重命名房间",
-    copy: "复制",
-    copyOk: "房间代码已复制到剪贴板",
-    copyFail: "复制失败，请手动复制房间代码：{code}",
-    qrBtn: "二维码",
-    qrBtnTitle: "显示房间二维码（手机扫码直接加入）",
+    copyOk: "房间号已复制",
+    copyFail: "复制失败，请手动记录房间号：{code}",
+    copyCodeTitle: "点击复制房间号",
+    countBtnTitle: "在线用户与更多操作",
+    invite: "发送邀请",
     connected: "已连接",
     disconnected: "未连接",
     leave: "退出房间",
@@ -148,14 +150,17 @@ export const zh = {
 
   qrModal: {
     title: "扫码进房",
+    siteTitle: "扫码访问本站",
     desc: "手机相机或 App 扫码，直接加入 {code}",
   },
 
   scanModal: {
     cameraFallback: "无法访问摄像头，请检查权限",
+    noCamera: "当前环境不支持摄像头（需 HTTPS 或 App）",
     httpsHint: "浏览器扫码需 HTTPS 环境；直连 http://IP 时请用系统相机扫码，或在 App 内使用。",
     gotIt: "知道了",
     nativeStarting: "正在调起原生扫码...",
+    nativeFail: "调起扫码失败：{msg}",
     aim: "将二维码对准取景框",
   },
 

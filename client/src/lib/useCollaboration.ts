@@ -11,6 +11,7 @@ import { WebsocketProvider } from "y-websocket";
 import { IndexeddbPersistence } from "y-indexeddb";
 import { getServerBase } from "./serverConfig";
 import { getToken } from "./auth";
+import { getUserColor } from "./userColors";
 import { User } from "@/types";
 
 interface UseCollaborationProps {
@@ -23,28 +24,7 @@ interface UseCollaborationProps {
   onRoomNameChange: (name: string) => void;
 }
 
-const USER_COLORS = [
-  "#FF6B6B",
-  "#4ECDC4",
-  "#45B7D1",
-  "#FFA07A",
-  "#98D8C8",
-  "#F7DC6F",
-  "#BB8FCE",
-  "#85C1E2",
-  "#F8B739",
-  "#52B788",
-  "#E76F51",
-  "#8338EC",
-];
-
-function getUserColor(userId: string): string {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i += 1) {
-    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return USER_COLORS[Math.abs(hash) % USER_COLORS.length];
-}
+// 用户标识色(USER_COLORS/getUserColor)已抽至 ./userColors,与头像共用。
 
 function diffText(oldText: string, newText: string) {
   if (oldText === newText) {

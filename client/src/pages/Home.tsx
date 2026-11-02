@@ -3,11 +3,14 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { upsertRecentRoom } from "@/lib/storage";
 import { generateRoomCode, formatRelative } from "@/lib/roomCode";
 import { getServerBase, saveServer } from "@/lib/serverConfig";
-import { parseJoinPayload } from "@/lib/qr";
+import { parseJoinPayload, buildJoinUrl } from "@/lib/qr";
 import { authFetch, clearToken, useAccount } from "@/lib/auth";
 import { useT } from "@/i18n";
 import { QrModal } from "@/components/QrModal";
 import { ScanModal } from "@/components/ScanModal";
+import { Menu, MenuItem } from "@/components/Menu";
+import { Avatar } from "@/components/Avatar";
+import { ScanIcon } from "@/components/icons";
 import { isDesktopTauri } from "@/platform";
 import { onTrayAction, pushRecentRooms } from "@/platform/tray";
 
@@ -31,6 +34,7 @@ export default function Home() {
   const [serverOk, setServerOk] = useState<boolean | null>(null);
   const [qrFor, setQrFor] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
+  const [shareSite, setShareSite] = useState(false);
   // 右栏:我的房间 / 在线房间;批量管理模式(仅我的房间)
   const [tab, setTab] = useState<"mine" | "online">("mine");
   const [batch, setBatch] = useState(false);
@@ -211,9 +215,11 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100 overflow-hidden pt-[env(safe-area-inset-top)] box-border">
-      {/* 顶栏:品牌居左;右上角固定「用户名 · 服务器地址」+ 设置/退出登录 */}
+      {/* 顶栏:品牌居左;右上角用户名 + 头像菜单(设置/分享本站/退出登录)。
+          服务器地址不再常驻展示 —— 配置只走设置页;不可达仍有黄色细条引导。 */}
       <header className="flex items-center justify-between px-6 py-3 shrink-0">
-        <div className="flex items-baseline gap-3 min-w-0">
+        {/* 品牌左上角:桌面显示;移动端隐藏(小屏留给内容,品牌在 welcome 页呈现) */}
+        <div className="hidden md:flex items-baseline gap-3 min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">
             {t("common.appName")}
           </h1>
@@ -221,33 +227,30 @@ export default function Home() {
             {t("common.taglineShort")}
           </p>
         </div>
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm text-gray-700 font-medium truncate max-w-[10rem]">
             {account?.name ?? t("common.anonymous")}
           </span>
-          <span className="text-gray-300">·</span>
-          <span
-            className={`text-xs font-mono truncate max-w-[14rem] ${
-              serverOk === false ? "text-red-500" : "text-gray-500"
-            }`}
-            title={serverBase}
+          <Menu
+            buttonTitle={t("home.accountMenuTitle")}
+            buttonClassName="flex items-center justify-center rounded-full p-1 min-w-tap-40 min-h-tap-40 hover:bg-white/70 transition-colors"
+            buttonContent={
+              <Avatar
+                name={account?.name ?? t("common.anonymous")}
+                id={account?.id}
+              />
+            }
           >
-            {serverBase}
-          </span>
-          <Link
-            to="/settings"
-            title={t("home.settingsLink")}
-            className="text-gray-500 hover:text-blue-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-base"
-          >
-            ⚙
-          </Link>
-          <button
-            onClick={logout}
-            title={t("topbar.logout")}
-            className="text-gray-500 hover:text-red-500 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-base"
-          >
-            ↩
-          </button>
+            <MenuItem onClick={() => navigate("/settings")}>
+              {t("home.settingsLink")}
+            </MenuItem>
+            <MenuItem onClick={() => setShareSite(true)}>
+              {t("home.shareSite")}
+            </MenuItem>
+            <MenuItem onClick={logout} className="text-red-600">
+              {t("topbar.logout")}
+            </MenuItem>
+          </Menu>
         </div>
       </header>
 
@@ -308,7 +311,8 @@ export default function Home() {
                 title={t("home.scanBtnTitle")}
                 className="px-4 py-2.5 min-h-tap-44 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
               >
-                📷 <span className="hidden sm:inline">{t("home.scanBtn")}</span>
+                <ScanIcon className="inline-block size-4" />{" "}
+                <span className="hidden sm:inline">{t("home.scanBtn")}</span>
               </button>
             </div>
           </form>
@@ -318,7 +322,10 @@ export default function Home() {
             <span>🔒 {t("home.featureSyncTitle")}</span>
             <span>📝 {t("home.featureRichTitle")}</span>
             <span>💾 {t("home.offlineWritable")}</span>
-            <span>📷 {t("home.scanBtnTitle")}</span>
+            <span>
+              <ScanIcon className="inline-block size-3.5 align-[-2px]" />{" "}
+              {t("home.scanBtnTitle")}
+            </span>
           </div>
         </section>
 
@@ -501,9 +508,17 @@ export default function Home() {
       {/* 二维码 / 扫码弹层 */}
       {qrFor && (
         <QrModal
-          code={qrFor}
-          server={serverBase}
+          url={buildJoinUrl(serverBase, qrFor)}
+          title={t("qrModal.title")}
+          desc={t("qrModal.desc", { code: qrFor })}
           onClose={() => setQrFor(null)}
+        />
+      )}
+      {shareSite && (
+        <QrModal
+          url={serverBase}
+          title={t("qrModal.siteTitle")}
+          onClose={() => setShareSite(false)}
         />
       )}
       {scanOpen && (

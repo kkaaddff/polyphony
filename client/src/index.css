@@ -37,3 +37,13 @@ body {
   min-width: var(--spacing-tap-38);
   min-height: var(--spacing-tap-38);
 }
+
+/*
+ * 移动端工具栏双行换行(v3.5.0):不再横向滚动,溢出即折行;
+ * 桌面宽度足够时 flex-wrap 天然单行,布局不变。
+ * 与上面按钮 38px 规则同址:工具栏样式必须放 index.css(同前述 v4 级联坑)。
+ */
+.mdxeditor-toolbar {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}

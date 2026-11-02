@@ -1,22 +1,24 @@
-// 二维码弹层：房间码 → Web join URL，canvas 渲染；点遮罩/ESC/按钮关闭。
+// 二维码弹层:任意 URL(canvas 渲染),点遮罩/ESC/按钮关闭。
+// 房间码(join URL)与「分享本站」(服务器地址)共用;文案由调用方传入。
 import { useEffect, useRef } from "react";
-import { buildJoinUrl, renderQr } from "@/lib/qr";
+import { renderQr } from "@/lib/qr";
 import { useT } from "@/i18n";
 
 interface QrModalProps {
-  code: string;
-  server: string;
+  url: string;
+  title: string;
+  desc?: string;
   onClose: () => void;
 }
 
-export function QrModal({ code, server, onClose }: QrModalProps) {
+export function QrModal({ url, title, desc, onClose }: QrModalProps) {
   const { t } = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas) renderQr(canvas, buildJoinUrl(server, code)).catch(console.error);
-  }, [code, server]);
+    if (canvas) renderQr(canvas, url).catch(console.error);
+  }, [url]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -35,10 +37,12 @@ export function QrModal({ code, server, onClose }: QrModalProps) {
         className="bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full text-center"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="font-semibold text-gray-900 mb-1">{t("qrModal.title")}</h3>
-        <p className="text-xs text-gray-500 mb-4">
-          {t("qrModal.desc", { code })}{" "}
-        </p>
+        <h3 className="font-semibold text-gray-900 mb-1">{title}</h3>
+        {desc && (
+          <p className="text-xs text-gray-500 mb-4">
+            {desc}{" "}
+          </p>
+        )}
         <div className="flex justify-center">
           <canvas
             ref={canvasRef}
@@ -46,7 +50,7 @@ export function QrModal({ code, server, onClose }: QrModalProps) {
           />
         </div>
         <p className="text-[10px] text-gray-500 mt-4 break-all leading-relaxed">
-          {buildJoinUrl(server, code)}
+          {url}
         </p>
         <button
           onClick={onClose}
