@@ -343,6 +343,37 @@ if (!states.some((s) => s.user?.name === "A")) fail("awareness 不可见");
     if (legacy.status !== 404) fail(`旧 /upload 应已移除(404),得 ${legacy.status}`);
   }
 
+  // 导出:一次性链接 → zip(md + 引用图);令牌一次性
+  {
+    const { code: ecode } = await postJson("/docs", {}, true).then((r) => r.json());
+    const eform = new FormData();
+    eform.append("image", new Blob([new Uint8Array([1, 2, 3, 4])], { type: "image/png" }), "e.png");
+    const eup = await (await fetch(`${BASE}/docs/${ecode}/attachments`, { method: "POST", headers: authed, body: eform })).json();
+    // 往文档写正文(经 WS)
+    const ed = new Doc();
+    const ep = new WebsocketProvider(SERVER, ecode, ed, wsOpts);
+    await new Promise((res) => { ep.on("status", (e) => e.status === "connected" && res()); setTimeout(res, 5000); });
+    ed.getMap("meta").set("roomName", "导出冒烟");
+    ed.getText("document").insert(0, `![img](${eup.url})`);
+    await wait(2500);
+    ep.destroy(); ep.ws?.close();
+
+    const link = await postJson(`/docs/${ecode}/export-link`, {}, true).then((r) => r.json());
+    if (!link.url) fail("export-link 未返回 url");
+    const zipRes = await fetch(`${BASE}${link.url}`);
+    if (zipRes.status !== 200) fail(`导出下载应 200,得 ${zipRes.status}`);
+    if (!/attachment/.test(zipRes.headers.get("content-disposition") ?? "")) fail("导出应带 Content-Disposition");
+    const replay = await fetch(`${BASE}${link.url}`);
+    if (replay.status !== 410) fail(`导出令牌应一次性(410),得 ${replay.status}`);
+    const { unzipSync } = await import("fflate");
+    const files = unzipSync(new Uint8Array(await zipRes.arrayBuffer()));
+    const names = Object.keys(files);
+    if (!names.some((n) => n.endsWith(".md"))) fail(`zip 应含 md: ${names.join(",")}`);
+    if (!names.some((n) => n.startsWith("images/"))) fail(`zip 应含 images/: ${names.join(",")}`);
+    const mdName = names.find((n) => n.endsWith(".md"));
+    if (!mdName.startsWith("导出冒烟")) fail(`md 文件名应为文档名: ${mdName}`);
+  }
+
   // /health 收敛:不列文档码,带数量
   const health = await fetch(`${BASE}/health`).then((r) => r.json());
   if ("rooms" in health) fail("/health 不应再列出文档码");

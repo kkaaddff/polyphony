@@ -1,6 +1,7 @@
 // /docs/* 路由:契约见 docs/document-lifecycle.md §4.3。
 // 「成员」= 任何已登录且知道码的账号(房间码仍是通行码,§10 遗留)。
 import { Router } from 'express';
+import crypto from 'crypto';
 import {
   getDocRow,
   createDoc,
@@ -8,7 +9,16 @@ import {
   restoreDoc,
   purgeDoc,
 } from '../docStore.js';
+import { buildExportZip, contentDisposition } from '../exporter.js';
 import { requireAuth } from './auth.js';
+
+// 一次性导出令牌(60s,用后即焚,纯内存)
+const EXPORT_TOKEN_MS = 60_000;
+const exportTokens = new Map(); // token → { code, accountId, exp }
+setInterval(() => {
+  const now = Date.now();
+  for (const [t, v] of exportTokens) if (v.exp < now) exportTokens.delete(t);
+}, 30_000).unref();
 
 function sendErr(res, e) {
   const status =
@@ -92,6 +102,38 @@ export function docsRouter(deps) {
     } catch (e) {
       sendErr(res, e);
     }
+  });
+
+  // 申请一次性导出链接(active 任何成员;trashed 仅所有者)
+  r.post('/:code/export-link', requireAuth, (req, res) => {
+    const code = String(req.params.code).toUpperCase();
+    const row = getDocRow(code);
+    if (!row || row.status === 'purged') {
+      return res.status(404).json({ error: '文档不存在', code: 'E_DOC_MISSING' });
+    }
+    if (row.status === 'trashed' && row.owner_id !== req.account.id) {
+      return res.status(403).json({ error: '只有所有者能导出回收站中的文档', code: 'E_NOT_OWNER' });
+    }
+    const token = crypto.randomUUID();
+    exportTokens.set(token, { code, exp: Date.now() + EXPORT_TOKEN_MS });
+    res.json({ url: `/docs/${code}/export?t=${token}`, expiresAt: Date.now() + EXPORT_TOKEN_MS });
+  });
+
+  // zip 下载(令牌校验:60s、一次性)
+  r.get('/:code/export', (req, res) => {
+    const t = String(req.query.t ?? '');
+    const v = exportTokens.get(t);
+    exportTokens.delete(t); // 用后即焚(无论成败)
+    const code = String(req.params.code).toUpperCase();
+    if (!v || v.code !== code || v.exp < Date.now()) {
+      return res.status(410).json({ error: '导出链接已失效,请重新申请', code: 'E_EXPORT_EXPIRED' });
+    }
+    const bundle = buildExportZip(code);
+    if (!bundle) return res.status(404).json({ error: '文档不存在', code: 'E_DOC_MISSING' });
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', contentDisposition(bundle.filename));
+    res.end(Buffer.from(bundle.zip));
+    console.log(`[docs] export ${code}`);
   });
 
   // 回收站列表(本账号为所有者)

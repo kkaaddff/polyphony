@@ -174,6 +174,29 @@ export function sweepDocs(now = Date.now()) {
   return { inactive, purged, accounts: dueAccounts.length, ...att };
 }
 
+/** 导出用:读正文与文档名(优先内存活文档,否则解码快照)。 */
+export function readDocForExport(code) {
+  const docCode = String(code ?? '').toUpperCase();
+  const live = YDOCS.get(docCode);
+  if (live) {
+    return {
+      name: String(live.getMap('meta').get('roomName') ?? docCode).slice(0, 40),
+      text: live.getText('document').toString(),
+    };
+  }
+  const row = getDb().prepare('SELECT state, name, status FROM docs WHERE code = ?').get(docCode);
+  if (!row || row.status === 'purged') return null;
+  if (!row.state) return { name: row.name || docCode, text: '' };
+  const doc = new Y.Doc();
+  try {
+    Y.applyUpdate(doc, row.state);
+  } catch {
+    return { name: row.name || docCode, text: '' };
+  }
+  const metaName = String(doc.getMap('meta').get('roomName') ?? '').slice(0, 40);
+  return { name: metaName || row.name || docCode, text: doc.getText('document').toString() };
+}
+
 /** 回收站列表(所有者视角)。 */
 export function listTrash(ownerId) {
   return getDb()
