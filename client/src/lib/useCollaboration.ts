@@ -80,13 +80,20 @@ export function useCollaboration({
 
     // 运行时解析服务器地址（URL 参数 > 已保存配置 > dev 环境变量 > 同源）
     const wsUrl = getServerBase();
-    // WS 强制鉴权:连接携带账号 token(服务端校验失败 close 4001)
+    // WS 强制鉴权(v4):凭据走子协议头,不进 URL/代理日志(服务端校验失败 close 4001)。
+    // y-websocket 不直接支持子协议,经 WebSocketPolyfill 注入(设计 V12)。
     const token = getToken();
     if (!token) return;
+    class AuthedWebSocket extends WebSocket {
+      constructor(url: string | URL) {
+        super(url, ["polyphony.v1", `auth.${token}`]);
+      }
+    }
     const doc = new Y.Doc();
     const provider = new WebsocketProvider(wsUrl, roomCode, doc, {
       connect: true,
-      params: { token, userId },
+      params: { userId },
+      WebSocketPolyfill: AuthedWebSocket,
     });
     const yText = doc.getText("document");
     const yMeta = doc.getMap<unknown>("meta");

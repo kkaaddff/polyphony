@@ -33,12 +33,26 @@ if (!deviceId || !recoveryKey.startsWith("poly_r_")) {
 const token = `poly_d_${deviceId}_${secret}`;
 const authParams = { token };
 
+// v4:凭据经子协议头注入(与 useCollaboration 的 WebSocketPolyfill 同构)
+class AuthedWS extends WebSocket {
+  constructor(url) {
+    super(url, ["polyphony.v1", `auth.${token}`]);
+  }
+}
+const wsOpts = { disableBc: true, params: { userId: "smoke" }, WebSocketPolyfill: AuthedWS };
+
 const docA = new Doc();
 const docB = new Doc();
-const pA = new WebsocketProvider(SERVER, ROOM, docA, { disableBc: true, params: authParams });
-const pB = new WebsocketProvider(SERVER, ROOM, docB, { disableBc: true, params: authParams });
+const pA = new WebsocketProvider(SERVER, ROOM, docA, wsOpts);
+const pB = new WebsocketProvider(SERVER, ROOM, docB, wsOpts);
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const postJson = (path, body) =>
+  fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 const fail = (msg) => {
   console.error("FAIL:", msg);
   process.exit(1);
@@ -97,12 +111,7 @@ if (!states.some((s) => s.user?.name === "A")) fail("awareness 不可见");
 
 // ---------- v4 凭据往返(设计 §7:响应不含 secret;恢复密钥可兑换;错钥 401) ----------
 {
-  const post = (path, body) =>
-    fetch(`${BASE}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  const post = postJson;
 
   const me = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
   if (!me.ok) fail("设备凭据未过 /auth/me");
@@ -133,7 +142,70 @@ if (!states.some((s) => s.user?.name === "A")) fail("awareness 不可见");
   if (asSession.status !== 401) fail("恢复密钥直接作会话应 401");
 }
 
+// ---------- WS 鉴权(子协议;设计 §4.5) ----------
+{
+  // 1) 只回显 polyphony.v1,绝不回显凭据
+  const ws = new WebSocket(`${SERVER}/wsproto`, ["polyphony.v1", `auth.${token}`]);
+  const proto = await new Promise((resolve) => {
+    ws.on("open", () => { resolve(ws.protocol); ws.close(); });
+    ws.on("error", () => resolve(null));
+    setTimeout(() => resolve(undefined), 5000);
+  });
+  if (proto !== "polyphony.v1") fail(`子协议应只回显 polyphony.v1,得 ${proto}`);
+
+  // 2) 带 v1 子协议但无凭据 → 握手后 close 4001
+  const noAuth = new WebSocket(`${SERVER}/wsproto`, ["polyphony.v1"]);
+  const code1 = await new Promise((resolve) => {
+    noAuth.on("close", (c) => resolve(c));
+    noAuth.on("error", () => resolve(-1));
+    setTimeout(() => resolve(undefined), 5000);
+  });
+  if (code1 !== 4001) fail(`无凭据应 close 4001,得 ${code1}`);
+
+  // 3) ?token= 查询参数回落已移除:即使带上有效凭据也不认 → 4001
+  const legacy = new WebSocket(`${SERVER}/wsproto?token=${encodeURIComponent(token)}`);
+  const codeLegacy = await new Promise((resolve) => {
+    legacy.on("close", (c) => resolve(c));
+    legacy.on("error", () => resolve(-1));
+    setTimeout(() => resolve(undefined), 5000);
+  });
+  if (codeLegacy !== 4001) fail(`?token= 回落应 4001,得 ${codeLegacy}`);
+
+  // 4) 吊销设备 → 其在线 WS 立即 4001
+  const secret2 = crypto.randomBytes(24).toString("hex");
+  const { deviceId: d3 } = await postJson("/auth/exchange", {
+    key: recoveryKey,
+    secret: secret2,
+    platform: { client: "web", os: "macos" },
+  }).then((r) => r.json());
+  const token3 = `poly_d_${d3}_${secret2}`;
+  class Authed3 extends WebSocket {
+    constructor(url) {
+      super(url, ["polyphony.v1", `auth.${token3}`]);
+    }
+  }
+  const doc3 = new Doc();
+  const p3 = new WebsocketProvider(SERVER, "WSREVOKE", doc3, {
+    disableBc: true,
+    WebSocketPolyfill: Authed3,
+  });
+  await new Promise((res) => {
+    p3.on("status", (e) => { if (e.status === "connected") res(); });
+    setTimeout(res, 5000);
+  });
+  const revoked = await fetch(`${BASE}/auth/devices/${d3}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!revoked.ok) fail(`吊销失败 ${revoked.status}`);
+  const code3 = await new Promise((resolve) => {
+    p3.ws?.on("close", (c) => resolve(c));
+    setTimeout(() => resolve(undefined), 5000);
+  });
+  if (code3 !== 4001) fail(`被吊销设备的 WS 应 4001,得 ${code3}`);
+}
+
 console.log(
-  `PASS 收敛冒烟：${a.length} 字符，标记 ${opens} 对，删除后 ${textA.toString().length} 字符，meta/awareness OK，v4 凭据往返 OK`
+  `PASS 收敛冒烟：${a.length} 字符，标记 ${opens} 对，删除后 ${textA.toString().length} 字符，meta/awareness OK，v4 凭据/WS 鉴权往返 OK`
 );
 process.exit(0);

@@ -121,13 +121,27 @@ if (fs.existsSync(staticDir)) {
 }
 
 const httpServer = createServer(app);
-const wss = new WebSocketServer({ server: httpServer });
+// v4 凭据走 Sec-WebSocket-Protocol(设计 V12):只回显 polyphony.v1,绝不回显凭据;
+// ?token= 查询参数回落随全新开始移除(不再进 URL/代理访问日志)。
+const wss = new WebSocketServer({
+  server: httpServer,
+  handleProtocols: (protocols) => (protocols.has('polyphony.v1') ? 'polyphony.v1' : false),
+});
+
+/** 从请求的子协议列表取 `auth.<凭据>`;缺失返回空串。 */
+function credentialFromSubprotocols(header) {
+  const list = String(header ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const auth = list.find((s) => s.startsWith('auth.'));
+  return auth ? auth.slice('auth.'.length) : '';
+}
 
 wss.on('connection', (ws, req) => {
   const roomUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
-  // 强制鉴权(v4 设备凭据;第 2 步切换为 WS 子协议携带,凭据不再进 URL)
-  const session = authenticate(roomUrl.searchParams.get('token') || '');
+  const session = authenticate(credentialFromSubprotocols(req.headers['sec-websocket-protocol']));
   if (!session) {
     ws.close(4001, 'unauthorized: credential required');
     return;
