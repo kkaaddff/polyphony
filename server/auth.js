@@ -84,8 +84,37 @@ function insertDevice(accountId, secret, rawPlatform, ua, now) {
   return deviceId;
 }
 
-function deviceCount(accountId) {
+export function deviceCountFor(accountId) {
   return getDb().prepare('SELECT COUNT(*) AS n FROM devices WHERE account_id = ?').get(accountId).n;
+}
+
+// ---- 供配对 v2 使用:新设备凭据在批准前先以 pendingDevice 形态登记 ----
+
+/** 生成本地 secret 已生成设备的登记材料(id/hash/平台/拼名)。 */
+export function buildPendingDevice(secret, rawPlatform, ua) {
+  assertSecret(secret);
+  const platform = normalizePlatform(rawPlatform, ua);
+  return {
+    id: crypto.randomUUID(),
+    hash: sha256hex(secret),
+    client: platform.client,
+    os: platform.os,
+    label: labelFor(platform, ua),
+  };
+}
+
+/** 批准时把 pendingDevice 写入账号(INSERT;id/hash/label 均已就绪)。 */
+export function insertPendingDevice(accountId, pending, now = Date.now()) {
+  getDb()
+    .prepare(
+      'INSERT INTO devices (id, account_id, hash, client, os, label, created_at) VALUES (?,?,?,?,?,?,?)'
+    )
+    .run(pending.id, accountId, pending.hash, pending.client, pending.os, pending.label, now);
+}
+
+export function isDeviceOnline(deviceId) {
+  const row = getDb().prepare('SELECT last_seen_at FROM devices WHERE id = ?').get(deviceId);
+  return Boolean(row && row.last_seen_at !== null);
 }
 
 // ---------- 账号 ----------
@@ -159,7 +188,7 @@ export function exchange({ key, secret, platform, ua }, now = Date.now()) {
       purgeAt: account.deleted_at + ACCOUNT_DELETE_GRACE_MS,
     });
   }
-  if (deviceCount(account.id) >= DEVICE_LIMIT) {
+  if (deviceCountFor(account.id) >= DEVICE_LIMIT) {
     throw err('E_DEVICE_LIMIT', '设备数量已达上限,请先吊销不用的设备');
   }
   const deviceId = insertDevice(account.id, secret, platform, ua, now);

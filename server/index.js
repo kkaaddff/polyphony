@@ -15,6 +15,7 @@ import { runResetV3, uploadsDir } from './resetV3.js';
 import { authenticate } from './auth.js';
 import { startSweeper } from './sweeper.js';
 import { authRouter } from './routes/auth.js';
+import { pairRouter } from './routes/pair.js';
 import { uploadsRouter } from './routes/uploads.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -80,6 +81,7 @@ app.use(
     liveUserCount: (code) => roomStats.get(code)?.clients.size ?? 0,
   })
 );
+app.use('/auth/pair', pairRouter({ closeDeviceWs }));
 
 // v3 形态的静态托管与上传(L3 替换为按文档归属的附件路由)
 app.use('/uploads', express.static(uploadsDir()));

@@ -47,12 +47,19 @@ const pA = new WebsocketProvider(SERVER, ROOM, docA, wsOpts);
 const pB = new WebsocketProvider(SERVER, ROOM, docB, wsOpts);
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const postJson = (path, body) =>
+const postJson = (path, body, authed = false) =>
   fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(authed ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(body),
   });
+const meName = async () => {
+  const r = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+  return (await r.json()).name;
+};
 const fail = (msg) => {
   console.error("FAIL:", msg);
   process.exit(1);
@@ -205,7 +212,51 @@ if (!states.some((s) => s.user?.name === "A")) fail("awareness 不可见");
   if (code3 !== 4001) fail(`被吊销设备的 WS 应 4001,得 ${code3}`);
 }
 
+// ---------- 配对 v2 双向往返(设计 §4.4:轮询无秘密;凭据本地拼装) ----------
+{
+  const secretNew = crypto.randomBytes(24).toString("hex");
+  const platform = { client: "app", os: "android" };
+
+  // push:create(qr)→claim→approve→poll approved→本地凭据过 /auth/me
+  const { code } = await postJson("/auth/pair/create", { kind: "qr" }, true).then((r) => {
+    if (!r.ok) throw new Error("pair/create 失败 " + r.status);
+    return r.json();
+  });
+  const claim = await postJson("/auth/pair/claim", { code, secret: secretNew, platform }).then((r) => r.json());
+  if (!claim.deviceId) fail("claim 应返回 deviceId");
+  const dup = await postJson("/auth/pair/claim", { code, secret: crypto.randomBytes(24).toString("hex"), platform });
+  if (dup.status !== 409) fail(`双 claim 应 409,得 ${dup.status}`);
+  const approved = await postJson("/auth/pair/approve", { code, accept: true }, true);
+  if (!approved.ok) fail(`approve 失败 ${approved.status}`);
+  const poll = await postJson("/auth/pair/poll", { code, deviceId: claim.deviceId }).then((r) => r.json());
+  if (poll.status !== "approved" || poll.accountName !== (await meName()))
+    fail(`push poll 应 approved 且账号名一致,得 ${JSON.stringify(poll)}`);
+  if (JSON.stringify(poll).includes(secretNew)) fail("poll 响应不得含 secret");
+  const newcomerToken = `poly_d_${claim.deviceId}_${secretNew}`;
+  const newcomerMe = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${newcomerToken}` } });
+  if (!newcomerMe.ok) fail("push 配对所得凭据未过 /auth/me");
+
+  // pull:request→info 不含账号→approve 绑定→poll approved→凭据可登录
+  const secretPull = crypto.randomBytes(24).toString("hex");
+  const req = await postJson("/auth/pair/request", { secret: secretPull, platform }).then((r) => r.json());
+  const info = await fetch(`${BASE}/auth/pair/info?code=${req.code}`).then((r) => r.json());
+  if (info.direction !== "pull" || "accountName" in info) fail("pull info 不得含账号信息");
+  const wrongPoll = await postJson("/auth/pair/poll", { code: req.code, deviceId: claim.deviceId });
+  if (wrongPoll.status !== 410) fail(`deviceId 不符应 410,得 ${wrongPoll.status}`);
+  const okPull = await postJson("/auth/pair/approve", { code: req.code, accept: true }, true);
+  if (!okPull.ok) fail(`pull approve 失败 ${okPull.status}`);
+  const pollPull = await postJson("/auth/pair/poll", { code: req.code, deviceId: req.deviceId }).then((r) => r.json());
+  if (pollPull.status !== "approved") fail(`pull poll 应 approved,得 ${JSON.stringify(pollPull)}`);
+  const pullToken = `poly_d_${req.deviceId}_${secretPull}`;
+  const pullMe = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${pullToken}` } });
+  if (!pullMe.ok) fail("pull 配对所得凭据未过 /auth/me");
+
+  // pendingPairings 随 /rooms 回(红点来源)
+  const rooms = await fetch(`${BASE}/auth/rooms`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+  if (typeof rooms.pendingPairings !== "number") fail("/rooms 应含 pendingPairings");
+}
+
 console.log(
-  `PASS 收敛冒烟：${a.length} 字符，标记 ${opens} 对，删除后 ${textA.toString().length} 字符，meta/awareness OK，v4 凭据/WS 鉴权往返 OK`
+  `PASS 收敛冒烟：${a.length} 字符，标记 ${opens} 对，删除后 ${textA.toString().length} 字符，meta/awareness OK，v4 凭据/WS 鉴权/配对双向往返 OK`
 );
 process.exit(0);

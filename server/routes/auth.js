@@ -12,6 +12,7 @@ import {
   restoreAccount,
 } from '../auth.js';
 import { listRooms, enterRoom, leaveRooms } from '../rooms.js';
+import { countPendingPairings } from '../pairing.js';
 
 /** 错误码 → HTTP 状态(统一 E_ 前缀;新增码时同步客户端 i18n 表)。 */
 function sendErr(res, e) {
@@ -151,7 +152,7 @@ export function authRouter(deps) {
       ...x,
       userCount: deps.liveUserCount(x.code),
     }));
-    res.json({ rooms });
+    res.json({ rooms, pendingPairings: countPendingPairings(req.account.id) });
   });
 
   r.post('/rooms/enter', requireAuth, (req, res) => {
@@ -161,7 +162,7 @@ export function authRouter(deps) {
         ...x,
         userCount: deps.liveUserCount(x.code),
       }));
-      res.json({ rooms });
+      res.json({ rooms, pendingPairings: countPendingPairings(req.account.id) });
     } catch (e) {
       sendErr(res, e);
     }
@@ -173,7 +174,7 @@ export function authRouter(deps) {
       ...x,
       userCount: deps.liveUserCount(x.code),
     }));
-    res.json({ rooms });
+    res.json({ rooms, pendingPairings: countPendingPairings(req.account.id) });
   });
 
   return r;
