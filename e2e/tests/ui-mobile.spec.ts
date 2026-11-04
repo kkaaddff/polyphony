@@ -2,7 +2,7 @@
 // 背景:真机审计发现房间行按钮裁出屏外、编辑器横溢 51px、退出按钮被遮挡
 // 点不动(交互损坏)——本套件用程序化布局断言守护(v3.4.0 重构的回归线)。
 import { expect, test, type Page } from "@playwright/test";
-import { createAccount, loginTestAccount, seedStorage } from "./helpers";
+import { createAccount, createDoc, loginTestAccount } from "./helpers";
 
 /** 页面横向溢出 ≤1px(整页可左右晃 = 布局破)。 */
 async function expectNoBreakout(page: Page) {
@@ -53,23 +53,17 @@ async function expectTapSize(page: Page, names: string[]) {
   }
 }
 
-async function seedThreeRooms(page: Page, token: string) {
-  for (const code of ["MOBROOM1", "MOBROOM2", "MOBROOM3"]) {
-    await fetch("http://localhost:3001/rooms/enter", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ code, name: `移动${code}` }),
-    });
+/** 服务端建 3 个文档让右栏有内容(v4:码由服务端生成)。 */
+async function seedThreeDocs(page: Page, token: string) {
+  for (const base of ["MOBROOM1", "MOBROOM2", "MOBROOM3"]) {
+    await createDoc(token, `移动${base}`);
   }
   // goto 而非 reload:调用方可能尚未导航(about:blank 上 reload 无效)
   await page.goto("/");
 }
 
 test.describe("去 web 化交互基线(v3.6.0)", () => {
-  test("禁下拉刷新/点击灰闪/UI 长按选中;输入区可选中;Web 版保留缩放", async ({ page }) => {
+  test("禁下拉刷新/点击灰闪/U 长按选中;输入区可选中;Web 版保留缩放", async ({ page }) => {
     await page.goto("/welcome");
     const styles = await page.evaluate(() => ({
       overscroll: getComputedStyle(document.documentElement).overscrollBehavior,
@@ -90,29 +84,36 @@ test.describe("去 web 化交互基线(v3.6.0)", () => {
 });
 
 test.describe("/welcome(移动)", () => {
-  test("创建表单:不破版、按钮可见可点", async ({ page }) => {
+  test("三入口表单:不破版、按钮可见可点", async ({ page }) => {
     await page.goto("/welcome");
     await expect(page.getByRole("heading", { name: "欢迎使用 Polyphony" })).toBeVisible();
     await expectNoBreakout(page);
     await expectButtonsInView(page);
-    await expectTapSize(page, ["新建账号", "已有账号 · 粘贴 token"]);
+    await expectTapSize(page, ["新建账号", "已有账号 · 配对登录", "恢复密钥登录"]);
   });
 
-  test("粘贴登录表单 + token 一次性展示页同样不破版", async ({ page }) => {
+  test("配对页签:本机二维码 + 扫码按钮,不破版", async ({ page }) => {
     await page.goto("/welcome");
     await page.getByRole("button", { name: /已有账号/ }).click();
+    // 服务端返回本机码后渲染二维码(canvas)与剩余时间
+    await expect(page.getByText(/剩余 \d+:\d{2}/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("canvas")).toBeVisible();
     await expectNoBreakout(page);
-    const acc = await createAccount();
-    await page.locator("#tokenInput").fill(acc.token);
-    await page.getByRole("button", { name: "验证并登录" }).click();
-    await expect(page).toHaveURL("/");
+    await expectButtonsInView(page);
+  });
+
+  test("恢复密钥页签:输入框可聚焦,不破版", async ({ page }) => {
+    await page.goto("/welcome");
+    await page.getByRole("button", { name: "恢复密钥登录" }).click();
+    await expect(page.locator("#recoveryKey")).toBeVisible();
+    await expectNoBreakout(page);
   });
 });
 
 test.describe("首页(移动单列)", () => {
   test("单列纵排:创建按钮全宽;列表不裁切;图标按钮触达达标", async ({ page }) => {
     const acc = await loginTestAccount(page);
-    await seedThreeRooms(page, acc.token);
+    await seedThreeDocs(page, acc.token);
 
     await expect(page.getByText("移动MOBROOM1")).toBeVisible({ timeout: 10_000 });
     await expectNoBreakout(page);
@@ -128,44 +129,49 @@ test.describe("首页(移动单列)", () => {
     const create = await page.getByRole("button", { name: "创建新文档" }).boundingBox();
     expect(create!.width).toBeGreaterThan(vw * 0.9);
 
-    // 房间行操作按钮触达(曾被裁出屏外的 ▦/✕)
+    // 文档行操作按钮触达(曾被裁出屏外的 ▦/✕)
     await expectTapSize(page, ["创建新文档", "加入文档"]);
     const qrBtns = page.getByTitle("显示二维码");
     expect(await qrBtns.count()).toBeGreaterThan(0);
     const qrBox = await qrBtns.first().boundingBox();
     expect(Math.min(qrBox!.width, qrBox!.height)).toBeGreaterThanOrEqual(38);
-    const leaveBtn = page.getByTitle("退出该房间").first();
-    const leaveBox = await leaveBtn.boundingBox();
-    expect(Math.min(leaveBox!.width, leaveBox!.height)).toBeGreaterThanOrEqual(38);
+    // 所有者行操作是 🗑 删除(退出 ✕ 只属于成员行)
+    const delBtn = page.getByTitle("删除文档（移入回收站）").first();
+    const delBox = await delBtn.boundingBox();
+    expect(Math.min(delBox!.width, delBox!.height)).toBeGreaterThanOrEqual(38);
   });
 
-  test("批量退出在移动端可用", async ({ page }) => {
+  test("所有者删除在移动端可用", async ({ page }) => {
     const acc = await loginTestAccount(page);
-    await seedThreeRooms(page, acc.token);
-    await page.getByRole("button", { name: /批量管理/ }).click();
-    await page
-      .locator("li", { hasText: "MOBROOM1" })
-      .locator('input[type="checkbox"]')
-      .check();
+    await createDoc(acc.token, "移动删除");
+    await page.goto("/");
+    await expect(page.getByText("移动删除")).toBeVisible({ timeout: 10_000 });
     page.once("dialog", (d) => d.accept());
-    await page.getByRole("button", { name: /退出所选/ }).click();
-    await expect(page.getByText("移动MOBROOM2")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("移动MOBROOM1")).toHaveCount(0);
+    await page.getByTitle("删除文档（移入回收站）").click();
+    await expect(page.getByText("回收站", { exact: true }).first()).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
-  test("扫码弹层:打开不破版,ESC 关闭", async ({ page }) => {
+  test("扫码弹层:无摄像头时切粘贴表单,打开不破版", async ({ page }) => {
     await loginTestAccount(page);
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "mediaDevices", {
+        value: undefined,
+        configurable: true,
+      });
+    });
     await page.goto("/");
     // 移动端扫码按钮仅剩 📷 图标(文案 sm 起显示),按 title 定位
     await page.getByTitle("扫房间二维码直接加入").click();
-    await page.waitForTimeout(1200);
+    await expect(page.getByText("或粘贴二维码内容 / 链接")).toBeVisible();
     await expectNoBreakout(page);
     await expectButtonsInView(page);
   });
 });
 
 test.describe("编辑器(移动)", () => {
-  test("整页零横溢(曾溢出 51px);工具栏双行换行无内滚;退出房间可达(人数菜单)", async ({ page }) => {
+  test("整页零横溢(曾溢出 51px);工具栏双行换行无内滚;退出文档可达(人数菜单)", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
@@ -194,12 +200,12 @@ test.describe("编辑器(移动)", () => {
     expect(visible.length).toBeGreaterThan(0);
     expect(Math.min(...visible), "工具栏按钮触达过小").toBeGreaterThanOrEqual(38);
 
-    // 交互级回归:「退出房间」收敛进人数菜单后仍必须真实可达;人数按钮自身触达 ≥38
+    // 交互级回归:「退出文档」收敛进人数菜单后仍必须真实可达;人数按钮自身触达 ≥38
     const countBtn = page.getByTitle(/在线用户/);
     const cb = await countBtn.boundingBox();
     expect(Math.min(cb!.width, cb!.height), "人数按钮触达过小").toBeGreaterThanOrEqual(38);
     await countBtn.click();
-    await page.getByRole("menuitem", { name: "退出房间" }).click();
+    await page.getByRole("menuitem", { name: "退出文档" }).click();
     await expect(page).toHaveURL("/");
   });
 
@@ -237,7 +243,7 @@ test.describe("编辑器(移动)", () => {
     await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 20_000 });
     await page.getByTitle(/在线用户/).click();
     await page.getByRole("menuitem", { name: "发送邀请" }).click();
-    await expect(page.getByRole("heading", { name: "扫码进房" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "扫码进文档" })).toBeVisible();
     await expectNoBreakout(page);
   });
 });
@@ -252,5 +258,15 @@ test.describe("设置(移动)", () => {
     const input = await page.locator("#serverUrl").boundingBox();
     const test = await page.getByRole("button", { name: "测试连接" }).boundingBox();
     expect(test!.width).toBeGreaterThan(input!.width - 4);
+  });
+
+  test("已登录设备/恢复密钥/注销三段均在视口内", async ({ page }) => {
+    await loginTestAccount(page);
+    await page.goto("/settings");
+    await expect(page.getByText("已登录设备")).toBeVisible();
+    await expect(page.getByText("本机")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("恢复密钥", { exact: true })).toBeVisible();
+    await expect(page.getByText("注销账号", { exact: true })).toBeVisible();
+    await expectNoBreakout(page);
   });
 });

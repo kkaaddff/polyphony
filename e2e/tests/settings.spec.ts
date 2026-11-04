@@ -14,18 +14,18 @@ test.describe("测试连接", () => {
     await expect(page.getByText("请先输入服务器地址")).toBeVisible();
   });
 
-  test("真实服务（:3001）：成功 + 延迟/房间/人数", async ({ page }) => {
+  test("真实服务（:3001）：成功 + 延迟/文档数/人数", async ({ page }) => {
     await page.goto("/settings");
     await page.locator("#serverUrl").fill("http://localhost:3001");
     await page.getByRole("button", { name: "测试连接" }).click();
-    await expect(page.getByText(/✓ 连接成功：\d+ms · \d+ 个房间 · \d+ 人在线/)).toBeVisible({
+    await expect(page.getByText(/✓ 连接成功：\d+ms · \d+ 个文档 · \d+ 人在线/)).toBeVisible({
       timeout: 10_000,
     });
   });
 
   test("裸 IP 自动补 http:// 前缀", async ({ page }) => {
     await page.route("**/health", (r) =>
-      r.fulfill({ contentType: "application/json", body: JSON.stringify({ totalRooms: 0, totalUsers: 0 }) })
+      r.fulfill({ contentType: "application/json", body: JSON.stringify({ docs: 0, totalUsers: 0 }) })
     );
     await page.goto("/settings");
     await page.locator("#serverUrl").fill("localhost:3001");
@@ -89,5 +89,21 @@ test.describe("保存 / 清除 / 返回", () => {
     await page.getByRole("menuitem", { name: "设置" }).click();
     await expect(page).toHaveURL("/settings");
     await expect(page.getByRole("heading", { name: "设置" })).toBeVisible();
+  });
+});
+
+test.describe("已登录设备(v4)", () => {
+  test("列表含本机;吊销本机 → 清凭据回引导页", async ({ page }) => {
+    await loginTestAccount(page);
+    await page.goto("/settings");
+    await expect(page.getByText("已登录设备")).toBeVisible();
+    await expect(page.getByText("本机")).toBeVisible({ timeout: 10_000 });
+
+    // 吊销本机设备:confirm 文案含设备标签,接受后清凭据回 /welcome
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("button", { name: "退出登录" }).click();
+    await expect(page).toHaveURL(/\/welcome/, { timeout: 10_000 });
+    const saved = await page.evaluate(() => localStorage.getItem("polyphony.token"));
+    expect(saved).toBeNull();
   });
 });

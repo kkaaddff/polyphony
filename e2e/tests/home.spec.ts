@@ -1,9 +1,11 @@
-// 首页:登录守卫、双栏一屏布局、顶栏身份、创建/加入、我的房间(批量退出)。
+// 首页:登录守卫、双栏一屏布局、顶栏身份、创建/加入、我的文档(批量退出)、回收站入口。
 import { expect, test } from "@playwright/test";
-import { captureDialogs, loginTestAccount, openShareSite } from "./helpers";
+import { captureDialogs, createAccount, createDoc, loginTestAccount, openShareSite } from "./helpers";
+
+const API = "http://localhost:3001";
 
 test.describe("守卫与顶栏身份", () => {
-  test("无 token:任意路由 → /welcome 引导", async ({ page }) => {
+  test("无凭据:任意路由 → /welcome 引导", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/welcome\?next=%2F$/);
     await expect(
@@ -25,7 +27,7 @@ test.describe("守卫与顶栏身份", () => {
     await expect(
       page.getByRole("button", { name: "创建新文档" })
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "我的房间" })).toBeVisible();
+    await expect(page.getByText("我的文档", { exact: true })).toBeVisible();
     // 一屏无外滚(h-screen + 列表内部滚动)
     const overflowed = await page.evaluate(
       () =>
@@ -42,103 +44,140 @@ test.describe("守卫与顶栏身份", () => {
     await expect(page).toHaveURL(/\/editor\?code=[A-Z0-9]{8}/);
   });
 
-  test("空房间码加入:提示补全", async ({ page }) => {
+  test("空文档码加入:提示补全", async ({ page }) => {
     await loginTestAccount(page);
     const dialogs = captureDialogs(page);
     await page.goto("/");
     await page.getByRole("button", { name: "加入文档" }).click();
-    await expect.poll(() => dialogs).toContain("请输入房间代码");
+    await expect.poll(() => dialogs).toContain("请输入文档代码");
   });
 
-  test("扫码:无摄像头环境显式报错(不静默关闭)", async ({ page }) => {
-    // http:// 直连等环境无 getUserMedia —— 必须显示本地化错误而非无声关掉
+  test("扫码:无摄像头环境回落粘贴表单(不静默关闭)", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    const code = await createDoc(acc.token, "粘贴进房");
+    // http:// 直连等环境无 getUserMedia —— v4 直接切粘贴兜底,而非只报错
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "mediaDevices", {
         value: undefined,
         configurable: true,
       });
     });
-    await loginTestAccount(page);
     await page.goto("/");
     await page.getByTitle("扫房间二维码直接加入").click();
-    await expect(
-      page.getByText("当前环境不支持摄像头（需 HTTPS 或 App）")
-    ).toBeVisible();
-    await page.getByRole("button", { name: "知道了" }).click();
-    await expect(
-      page.getByText("当前环境不支持摄像头（需 HTTPS 或 App）")
-    ).toBeHidden();
+    await expect(page.getByText("或粘贴二维码内容 / 链接")).toBeVisible();
+    // 粘贴 8 位码同样能进文档
+    await page.locator("#pasteLink").fill(code);
+    await page.getByRole("button", { name: "识别" }).click();
+    await expect(page).toHaveURL(new RegExp(`/editor\\?code=${code}`));
   });
 
-  test("房间码加入 → 编辑器", async ({ page }) => {
-    await loginTestAccount(page);
+  test("文档码加入 → 编辑器(不存在的码:提示缺失)", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    const code = await createDoc(acc.token);
     await page.goto("/");
-    await page.locator("#roomCode").fill("JOIN0001");
+    await page.locator("#roomCode").fill(code);
     await page.getByRole("button", { name: "加入文档" }).click();
-    await expect(page).toHaveURL(/\/editor\?code=JOIN0001/);
+    await expect(page).toHaveURL(new RegExp(`/editor\\?code=${code}`));
+  });
+
+  test("加入不存在的文档:alert 提示且不进编辑器", async ({ page }) => {
+    await loginTestAccount(page);
+    const dialogs = captureDialogs(page);
+    await page.goto("/");
+    await page.locator("#roomCode").fill("NOSUCH99");
+    await page.getByRole("button", { name: "加入文档" }).click();
+    await expect.poll(() => dialogs).toContain("文档不存在或已被永久清除");
+    await expect(page).toHaveURL("/");
   });
 });
 
-test.describe("我的房间(服务端房间簿)", () => {
-  test("进入自动登记;单个退出后列表清空", async ({ page }) => {
+test.describe("我的文档(成员登记)", () => {
+  test("进入自动登记;所有者删除→回收站标记→✕ 移出列表", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
     await expect(page).toHaveURL(/\/editor/);
     await page.getByTitle("在线用户与更多操作").click();
-    await page.getByRole("menuitem", { name: "退出房间" }).click();
-    // 回首页:房间已登记(未命名 + 随机码行)
+    await page.getByRole("menuitem", { name: "退出文档" }).click();
+    // 回首页:文档已登记(未命名 + 随机码行),所有者行是 🗑 删除而非 ✕ 退出
     await expect(
       page.getByText("未命名文档", { exact: true })
     ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTitle("退出该文档")).toHaveCount(0);
+    await expect(page.getByTitle("删除文档（移入回收站）")).toHaveCount(1);
 
-    // 单个退出(confirm 自动接受)
+    // 删除(进回收站) → 行灰显带「回收站」标记 → ✕ 移出列表后清空
     page.once("dialog", (d) => d.accept());
-    await page.getByTitle("退出该房间").click();
-    await expect(page.getByText("还没有访问过的房间")).toBeVisible({
+    await page.getByTitle("删除文档（移入回收站）").click();
+    await expect(page.getByText("回收站", { exact: true }).first()).toBeVisible({
+      timeout: 10_000,
+    });
+    page.once("dialog", (d) => d.accept());
+    await page.getByTitle("退出该文档").click();
+    await expect(page.getByText("还没有打开过的文档")).toBeVisible({
       timeout: 10_000,
     });
   });
 
-  test("批量退出:3 个退 2 留 1", async ({ page }) => {
-    const acc = await loginTestAccount(page);
-    // API 直登 3 个房间
-    for (const code of ["BATCH001", "BATCH002", "BATCH003"]) {
-      await fetch("http://localhost:3001/rooms/enter", {
+  test("批量退出:加入他人 3 个文档,退出 2 留 1(owner 行不可选不可退)", async ({ page }) => {
+    const other = await createAccount(); // 文档所有者(另一账号)
+    const acc = await loginTestAccount(page); // 本页账号:纯成员,行可批量退出
+    for (const base of ["BATCH1", "BATCH2", "BATCH3"]) {
+      const code = await createDoc(other.token, `批量${base}`);
+      await fetch(`${API}/rooms/enter`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${acc.token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ code, name: `批量${code}` }),
+        body: JSON.stringify({ code }),
       });
     }
     await page.goto("/");
-    await expect(page.getByText("批量BATCH001")).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.getByText("批量BATCH1")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("批量BATCH3")).toBeVisible();
 
     await page.getByRole("button", { name: /批量管理/ }).click();
     await page
-      .locator("li", { hasText: "BATCH001" })
+      .locator("li", { hasText: "批量BATCH1" })
       .locator('input[type="checkbox"]')
       .check();
     await page
-      .locator("li", { hasText: "BATCH002" })
+      .locator("li", { hasText: "批量BATCH2" })
       .locator('input[type="checkbox"]')
       .check();
 
     page.once("dialog", (d) => d.accept());
     await page.getByRole("button", { name: /退出所选/ }).click();
 
-    await expect(page.getByText("批量BATCH003")).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(page.getByText("批量BATCH001")).toHaveCount(0);
-    await expect(page.getByText("批量BATCH002")).toHaveCount(0);
+    await expect(page.getByText("批量BATCH3")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("批量BATCH1")).toHaveCount(0);
+    await expect(page.getByText("批量BATCH2")).toHaveCount(0);
   });
 
-  test("退出登录:头像菜单 confirm 后清 token 回引导页", async ({ page }) => {
+  test("所有者删除:文档进回收站,回收站弹窗可恢复", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    await createDoc(acc.token, "待删文档");
+    await page.goto("/");
+    await expect(page.getByText("待删文档")).toBeVisible({ timeout: 10_000 });
+
+    // 所有者行是 🗑(删除进回收站),confirm 自动接受
+    page.once("dialog", (d) => d.accept());
+    await page.getByTitle("删除文档（移入回收站）").click();
+    // 回收站页签出现该行(灰显 + 回收站标记 + ✕ 移出列表)
+    await expect(page.getByText("回收站", { exact: true }).first()).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // 回收站弹窗:恢复后回到列表
+    await page.getByTitle("账号菜单").click();
+    await page.getByRole("menuitem", { name: "回收站" }).click();
+    await expect(page.getByRole("heading", { name: "回收站" })).toBeVisible();
+    await page.getByRole("button", { name: "恢复" }).first().click();
+    await expect(page.getByText("待删文档").first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("退出登录:头像菜单 confirm 后清凭据回引导页", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
     page.once("dialog", (d) => d.accept());

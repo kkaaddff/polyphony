@@ -145,36 +145,37 @@ export function authRouter(deps) {
     }
   });
 
-  // ---- 房间簿(v3 同形接口;L2 随 docStore 最终化) ----
+  return r;
+}
 
-  r.get('/rooms', requireAuth, (req, res) => {
-    const rooms = listRooms(req.account.id).map((x) => ({
-      ...x,
-      userCount: deps.liveUserCount(x.code),
-    }));
-    res.json({ rooms, pendingPairings: countPendingPairings(req.account.id) });
-  });
+/**
+ * 房间簿(顶层 /rooms,契约见 docs/document-lifecycle.md §4.3:
+ * 响应附 pendingPairings 供任一已登录设备亮红点,V11)。
+ */
+export function roomsRouter(deps) {
+  const r = Router();
 
-  r.post('/rooms/enter', requireAuth, (req, res) => {
-    try {
-      enterRoom(req.account.id, req.body?.code);
-      const rooms = listRooms(req.account.id).map((x) => ({
+  const respond = (req, res) =>
+    res.json({
+      rooms: listRooms(req.account.id).map((x) => ({
         ...x,
         userCount: deps.liveUserCount(x.code),
-      }));
-      res.json({ rooms, pendingPairings: countPendingPairings(req.account.id) });
+      })),
+      pendingPairings: countPendingPairings(req.account.id),
+    });
+
+  r.get('/', requireAuth, respond);
+  r.post('/enter', requireAuth, (req, res) => {
+    try {
+      enterRoom(req.account.id, req.body?.code);
+      respond(req, res);
     } catch (e) {
       sendErr(res, e);
     }
   });
-
-  r.post('/rooms/leave', requireAuth, (req, res) => {
+  r.post('/leave', requireAuth, (req, res) => {
     leaveRooms(req.account.id, req.body?.codes);
-    const rooms = listRooms(req.account.id).map((x) => ({
-      ...x,
-      userCount: deps.liveUserCount(x.code),
-    }));
-    res.json({ rooms, pendingPairings: countPendingPairings(req.account.id) });
+    respond(req, res);
   });
 
   return r;

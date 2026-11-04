@@ -1,19 +1,18 @@
-// 配对登录弹层(发起端):QR 出码(到期自动重生成)/邀请链接生成/活跃配对列表 + 确认。
-// 轮询与红点归 Home(D13:有未清扫配对才轮询);本组件只消费 pairings + refresh。
+// 「登录其他设备」弹窗(v2,docs/identity-and-sharing.md §4.6 发起端):
+// push QR(2 分钟) + 链接(5/15/30/60 档) + 本账号未清扫配对列表(确认/拒绝/撤销)。
 import { useEffect, useRef, useState } from "react";
-import { getServerBase } from "@/lib/serverConfig";
 import { buildPairUrl, renderQr } from "@/lib/qr";
+import { copyText } from "@/lib/clipboard";
 import {
+  createPushPairing,
+  approvePairing,
   cancelPairing,
-  confirmPairing,
-  createPairing,
   formatRemain,
-  shortenUa,
+  LINK_TTL_MINUTES,
   type PairingInfo,
 } from "@/lib/pairing";
+import { getServerBase } from "@/lib/serverConfig";
 import { useT } from "@/i18n";
-
-const LINK_TIERS = [5, 15, 30, 60]; // 与服务端 LINK_TTL_MINUTES 对齐
 
 interface PairModalProps {
   pairings: PairingInfo[];
@@ -21,35 +20,16 @@ interface PairModalProps {
   onClose: () => void;
 }
 
-function statusLabelKey(p: PairingInfo) {
-  switch (p.status) {
-    case "pending":
-      return p.kind === "qr" ? "pair.stPending" : "pair.stPendingLink";
-    case "claimed":
-      return "pair.stClaimed";
-    case "approved":
-      return "pair.stApproved";
-    case "consumed":
-      return "pair.stConsumed";
-    case "denied":
-      return "pair.stDenied";
-    case "cancelled":
-      return "pair.stCancelled";
-  }
-}
-
 export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
   const { t } = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const creatingQr = useRef(false);
+  const [qr, setQr] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [linkTtl, setLinkTtl] = useState<number>(LINK_TTL_MINUTES[0]);
+  const [link, setLink] = useState<{ url: string; expiresAt: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState("");
   const [now, setNow] = useState(() => Date.now());
-  const [tier, setTier] = useState(5);
-  const [linkBusy, setLinkBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [busyCode, setBusyCode] = useState<string | null>(null);
-  const [actionError, setActionError] = useState("");
 
-  // 倒计时/到期检测的秒级心跳
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
@@ -64,64 +44,67 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // QR 自动生成/重生成:列表里没有 qr 配对(未生成或已被服务端清扫)即补一枚。
-  // 服务端 sweep 在 status 里顺手清掉过期项,故「过期」在这里表现为消失。
-  const qrItem = pairings.find((p) => p.kind === "qr");
-  const latestLink = pairings.find((p) => p.kind === "link");
+  // QR:无 qr 型配对时自动创建;过期自动重建(扫过的码留在列表里显示终态)。
+  // 在途用 ref 防重入 —— 若把 busy 放进依赖,首轮 effect 的 cleanup 会把
+  // 刚创建的结果作废,形成「创建→作废→再创建」风暴(挤爆每账号 3 个配对)。
+  const activeQr = qr && now < qr.expiresAt ? qr : null;
+  const creatingRef = useRef(false);
   useEffect(() => {
-    if (qrItem || creatingQr.current) return;
-    creatingQr.current = true;
-    createPairing("qr")
-      .then(refresh)
-      .catch(console.error)
+    if (activeQr || creatingRef.current) return;
+    creatingRef.current = true;
+    setBusy(true);
+    createPushPairing("qr")
+      .then((r) => setQr(r))
+      .catch(() => {
+        /* 失败下次渲染重试 */
+      })
       .finally(() => {
-        creatingQr.current = false;
+        creatingRef.current = false;
+        setBusy(false);
       });
-  }, [qrItem, refresh]);
+  }, [activeQr]);
 
-  // 渲染二维码(扫码中显示被扫状态而非旧码)
-  const showQr = qrItem?.status === "pending" && qrItem.expiresAt > now;
   useEffect(() => {
-    if (!showQr || !qrItem) return;
-    const canvas = canvasRef.current;
-    if (canvas) renderQr(canvas, buildPairUrl(getServerBase(), qrItem.code)).catch(console.error);
-  }, [showQr, qrItem]);
+    if (activeQr && canvasRef.current) {
+      renderQr(canvasRef.current, buildPairUrl(getServerBase(), activeQr.code)).catch(console.error);
+    }
+  }, [activeQr]);
 
-  const copyLink = async (url: string) => {
+  const makeLink = async () => {
+    setBusy(true);
     try {
-      await navigator.clipboard?.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      const r = await createPushPairing("link", linkTtl);
+      setLink({ url: buildPairUrl(getServerBase(), r.code), expiresAt: r.expiresAt });
+      refresh();
     } catch {
-      /* 非安全上下文降级:输入框选中态可手动复制 */
+      /* 忽略 */
+    } finally {
+      setBusy(false);
     }
   };
 
-  const generateLink = async () => {
-    setLinkBusy(true);
-    setActionError("");
-    try {
-      await createPairing("link", tier);
-      refresh();
-    } catch (e) {
-      console.error(e);
-      setActionError(t("pair.statusFail"));
-    } finally {
-      setLinkBusy(false);
+  const copy = async (key: string, text: string) => {
+    if (await copyText(text)) {
+      setCopied(key);
+      setTimeout(() => setCopied(""), 1500);
     }
   };
 
-  const runAction = async (code: string, fn: () => Promise<unknown>) => {
-    setBusyCode(code);
-    setActionError("");
+  const decide = async (code: string, accept: boolean) => {
     try {
-      await fn();
+      await approvePairing(code, accept);
       refresh();
-    } catch (e) {
-      console.error(e);
-      setActionError(t("pair.statusFail"));
-    } finally {
-      setBusyCode(null);
+    } catch {
+      refresh();
+    }
+  };
+
+  const cancel = async (code: string) => {
+    try {
+      await cancelPairing(code);
+      refresh();
+    } catch {
+      refresh();
     }
   };
 
@@ -131,163 +114,144 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto space-y-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="font-semibold text-gray-900 mb-4">{t("pair.modalTitle")}</h3>
+        <h3 className="font-semibold text-gray-900">{t("pair.entry")}</h3>
 
-        {/* QR 区:待扫码显示码+倒计时;已扫码转提示(确认操作在下方列表) */}
-        <section className="rounded-xl border border-gray-100 p-4 mb-4 text-center">
-          <p className="text-xs text-gray-500 mb-2">{t("pair.qrSection")}</p>
-          {showQr && qrItem ? (
+        {/* 二维码(2 分钟,过期自动刷新) */}
+        <section className="text-center space-y-2">
+          <p className="text-sm font-medium text-gray-700">{t("pair.qrTitle")}</p>
+          {activeQr ? (
             <>
               <div className="flex justify-center">
                 <canvas ref={canvasRef} className="rounded-lg border border-gray-100" />
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                {t("pair.remain", { time: formatRemain(qrItem.expiresAt, now) })}
+              <p className="text-xs text-gray-400">
+                {t("pair.qrRemain", { time: formatRemain(activeQr.expiresAt, now) })}
               </p>
-              <p className="text-[10px] text-gray-400 mt-1">{t("pair.qrDesc")}</p>
             </>
-          ) : qrItem && (qrItem.status === "claimed" || qrItem.status === "approved") ? (
-            <p className="text-sm text-blue-600 py-8">{t("pair.stClaimed")}</p>
           ) : (
-            <p className="text-sm text-gray-400 py-8">…</p>
+            <p className="text-sm text-gray-400 py-6">…</p>
           )}
         </section>
 
-        {/* 邀请链接区:档位 + 生成;生成后只读展示 URL(e2e 亦从 DOM 取) */}
-        <section className="rounded-xl border border-gray-100 p-4 mb-4">
-          <p className="text-xs text-gray-500 mb-2">{t("pair.linkSection")}</p>
-          <div className="flex items-center gap-2 mb-2">
-            <label htmlFor="pairTier" className="text-xs text-gray-600 shrink-0">
-              {t("pair.linkTierLabel")}
-            </label>
-            <select
-              id="pairTier"
-              value={tier}
-              onChange={(e) => setTier(Number(e.target.value))}
-              className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
-            >
-              {LINK_TIERS.map((m) => (
-                <option key={m} value={m}>
-                  {m} {t("pair.linkTierUnit")}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={generateLink}
-              disabled={linkBusy}
-              className="ml-auto px-3 py-1.5 min-h-tap-40 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50 transition-colors"
-            >
-              {t("pair.linkGenerate")}
-            </button>
-          </div>
-          {latestLink && (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                readOnly
-                value={buildPairUrl(getServerBase(), latestLink.code)}
-                onFocus={(e) => e.target.select()}
-                aria-label={t("pair.linkCopy")}
-                className="flex-1 min-w-0 px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-mono text-gray-600"
-              />
+        {/* 邀请链接(分钟级档) */}
+        <section className="space-y-2 border-t border-gray-100 pt-4">
+          <p className="text-sm font-medium text-gray-700">{t("pair.linkTitle")}</p>
+          <div className="flex gap-2" role="radiogroup" aria-label={t("pair.linkTitle")}>
+            {LINK_TTL_MINUTES.map((m) => (
               <button
-                onClick={() => copyLink(buildPairUrl(getServerBase(), latestLink.code))}
-                className="shrink-0 px-3 py-1.5 min-h-tap-40 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 transition-colors"
+                key={m}
+                onClick={() => setLinkTtl(m)}
+                className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                  linkTtl === m
+                    ? "bg-blue-50 border-blue-400 text-blue-700"
+                    : "border-gray-300 text-gray-600 hover:bg-gray-50"
+                }`}
               >
-                {copied ? t("pair.copied") : t("pair.linkCopy")}
+                {t("pair.linkTtl", { n: m })}
               </button>
-            </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => void makeLink()}
+              disabled={busy}
+              className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
+            >
+              {t("pair.linkGen")}
+            </button>
+            {link && (
+              <button
+                onClick={() => void copy("link", link.url)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
+              >
+                {copied === "link" ? t("welcome.copied") : t("qrModal.copyLink")}
+              </button>
+            )}
+          </div>
+          {link && (
+            <input
+              type="text"
+              readOnly
+              value={link.url}
+              aria-label={t("qrModal.copyLink")}
+              onFocus={(e) => e.target.select()}
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 font-mono"
+            />
           )}
         </section>
 
-        {/* 活跃配对列表:状态 + 剩余 + 操作(claimed 才是关键安全锚) */}
+        {/* 未清扫配对列表:claimed 待确认(红点来源);approved 等上线;终态可复盘 */}
         {pairings.length > 0 && (
-          <section>
-            <p className="text-xs text-gray-500 mb-2">{t("pair.listTitle")}</p>
+          <section className="space-y-2 border-t border-gray-100 pt-4">
+            <p className="text-sm font-medium text-gray-700">{t("pair.listTitle")}</p>
             <ul className="space-y-2">
-              {pairings.map((p) => {
-                const active =
-                  p.status === "pending" || p.status === "claimed" || p.status === "approved";
-                const busy = busyCode === p.code;
-                return (
-                  <li
-                    key={p.code}
-                    className="rounded-xl border border-gray-100 px-3 py-2 flex items-center gap-2 flex-wrap"
-                  >
-                    <span className="text-xs font-medium text-gray-500 shrink-0">
-                      {p.kind === "qr" ? t("pair.kindQr") : t("pair.kindLink")}
+              {pairings.map((p) => (
+                <li
+                  key={p.code}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-gray-700 truncate">
+                      {p.direction === "pull" ? t("pair.dirPull") : t("pair.kindQrOrLink", { kind: p.kind })}
+                      {p.newcomerLabel ? ` · ${p.newcomerLabel}` : ""}
                     </span>
-                    <span
-                      className={`text-sm font-medium ${
-                        p.status === "consumed"
-                          ? "text-green-600"
-                          : p.status === "denied" || p.status === "cancelled"
-                            ? "text-gray-400"
-                            : p.status === "claimed"
-                              ? "text-blue-600"
-                              : "text-gray-700"
-                      }`}
-                    >
-                      {t(statusLabelKey(p))}
+                    <span className="text-xs text-gray-400 shrink-0">
+                      {now < p.expiresAt ? formatRemain(p.expiresAt, now) : t("pair.expired")}
                     </span>
-                    {active && (
-                      <span className="text-xs text-gray-400">
-                        {t("pair.remain", { time: formatRemain(p.expiresAt, now) })}
-                      </span>
-                    )}
-                    {p.claimedMeta && (
-                      <span className="text-xs text-gray-400 truncate">
-                        {t("pair.claimedFrom", { ua: shortenUa(p.claimedMeta.ua) })}
-                      </span>
-                    )}
-                    <div className="ml-auto flex items-center gap-1.5">
-                      {p.status === "claimed" && (
-                        <>
-                          <button
-                            onClick={() =>
-                              runAction(p.code, () => confirmPairing(p.code, true))
-                            }
-                            disabled={busy}
-                            className="px-3 py-1.5 min-h-tap-40 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                          >
-                            {t("pair.confirmBtn")}
-                          </button>
-                          <button
-                            onClick={() =>
-                              runAction(p.code, () => confirmPairing(p.code, false))
-                            }
-                            disabled={busy}
-                            className="px-3 py-1.5 min-h-tap-40 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                          >
-                            {t("pair.denyBtn")}
-                          </button>
-                        </>
-                      )}
-                      {active && (
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {p.status === "claimed" && (
+                      <>
+                        <span className="text-xs text-amber-600">{t("pair.waitingYou")}</span>
                         <button
-                          onClick={() => runAction(p.code, () => cancelPairing(p.code))}
-                          disabled={busy}
-                          className="px-2 py-1.5 min-h-tap-40 text-xs text-gray-400 hover:text-red-500 disabled:opacity-50"
+                          onClick={() => void decide(p.code, true)}
+                          className="px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
+                        >
+                          {t("pair.approveBtn")}
+                        </button>
+                        <button
+                          onClick={() => void decide(p.code, false)}
+                          className="px-3 py-1 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50"
+                        >
+                          {t("pair.denyBtn")}
+                        </button>
+                      </>
+                    )}
+                    {p.status === "pending" && p.direction === "push" && (
+                      <span className="text-xs text-gray-500">{t("pair.waitingScan")}</span>
+                    )}
+                    {p.status === "approved" && (
+                      <span className={`text-xs ${p.deviceOnline ? "text-green-600" : "text-gray-500"}`}>
+                        {p.deviceOnline ? `✓ ${t("pair.deviceOnline")}` : t("pair.waitingOnline")}
+                      </span>
+                    )}
+                    {(p.status === "pending" || p.status === "claimed" || p.status === "approved") &&
+                      p.direction === "push" && (
+                        <button
+                          onClick={() => void cancel(p.code)}
+                          className="px-3 py-1 rounded-lg border border-red-200 text-red-600 text-xs font-medium hover:bg-red-50"
                         >
                           {t("pair.cancelBtn")}
                         </button>
                       )}
-                    </div>
-                  </li>
-                );
-              })}
+                    {(p.status === "denied" || p.status === "cancelled") && (
+                      <span className="text-xs text-gray-400">
+                        {p.status === "denied" ? t("pairPage.deniedTitle") : t("pairPage.cancelledTitle")}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
             </ul>
           </section>
         )}
 
-        {actionError && <p className="text-xs text-red-600 mt-2">{actionError}</p>}
-
         <button
           onClick={onClose}
-          className="mt-4 w-full py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors"
+          className="w-full py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors"
         >
           {t("common.close")}
         </button>

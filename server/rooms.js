@@ -14,11 +14,13 @@ function normalizeCode(code) {
   return String(code ?? '').trim().toUpperCase().slice(0, 16);
 }
 
-/** 我的房间:memberships ⨝ docs。 */
+/** 我的房间:memberships ⨝ docs(isOwner 供首页区分 🗑/✕ 行操作)。 */
 export function listRooms(accountId) {
   return getDb()
     .prepare(
-      `SELECT m.doc_code AS code, m.role, m.last_used AS lastUsed, d.name, d.status
+      `SELECT m.doc_code AS code, m.role,
+              CASE WHEN m.role = 'owner' THEN 1 ELSE 0 END AS isOwner,
+              m.last_used AS lastUsed, d.name, d.status
          FROM memberships m JOIN docs d ON d.code = m.doc_code
         WHERE m.account_id = ?
         ORDER BY m.last_used DESC`
@@ -59,8 +61,14 @@ export function enterRoom(accountId, rawCode, now = Date.now()) {
 export function leaveRooms(accountId, rawCodes) {
   const codes = (Array.isArray(rawCodes) ? rawCodes : []).map(normalizeCode).filter(Boolean);
   for (const code of codes) {
+    // owner 行不可退出(所有者用删除文档);例外:已入回收站的行允许移出列表 ——
+    // 只删书签,文档本体仍在回收站(TrashModal 按 docs.owner 查询,不受影响)。
     getDb()
-      .prepare("DELETE FROM memberships WHERE account_id = ? AND doc_code = ? AND role = 'member'")
+      .prepare(
+        `DELETE FROM memberships
+          WHERE account_id = ? AND doc_code = ?
+            AND (role = 'member' OR (role = 'owner' AND doc_code IN (SELECT code FROM docs WHERE status = 'trashed')))`
+      )
       .run(accountId, code);
   }
 }

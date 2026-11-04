@@ -264,7 +264,7 @@ if (!states.some((s) => s.user?.name === "A")) fail("awareness 不可见");
   if (!pullMe.ok) fail("pull 配对所得凭据未过 /auth/me");
 
   // pendingPairings 随 /rooms 回(红点来源)
-  const rooms = await fetch(`${BASE}/auth/rooms`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+  const rooms = await fetch(`${BASE}/rooms`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
   if (typeof rooms.pendingPairings !== "number") fail("/rooms 应含 pendingPairings");
 }
 

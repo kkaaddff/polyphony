@@ -1,40 +1,46 @@
-// /join 扫码落地页:无 token 带 next 去引导;有 token 取账号名直进编辑器。
+// /join 扫码落地页:无凭据带 next 去引导;有凭据取账号名直进编辑器。
+// v4:WS 进房前服务端校验文档存在,所有用例的码都先经 API 真实建文档。
 import { expect, test } from "@playwright/test";
-import { loginTestAccount } from "./helpers";
+import { createDoc, loginTestAccount } from "./helpers";
 
 test.describe("/join 分流", () => {
-  test("无 token:重定向 /welcome 并保留 next=落地地址", async ({ page }) => {
+  test("无凭据:重定向 /welcome 并保留 next=落地地址", async ({ page }) => {
     await page.goto("/join?code=abcd1234&server=http%3A%2F%2Flocalhost%3A3001");
     await expect(page).toHaveURL(/\/welcome\?next=%2Fjoin%3Fcode%3DABCD1234/);
   });
 
-  test("有 token:账号名直进编辑器", async ({ page }) => {
+  test("有凭据:账号名直进编辑器", async ({ page }) => {
     const acc = await loginTestAccount(page);
-    await page.goto("/join?code=abcd1234&server=http%3A%2F%2Flocalhost%3A3001");
+    const code = await createDoc(acc.token);
+    await page.goto(`/join?code=${code}&server=http%3A%2F%2Flocalhost%3A3001`);
     await expect(page).toHaveURL(
-      new RegExp(`/editor\\?code=ABCD1234&name=${encodeURIComponent(acc.name)}$`)
+      new RegExp(`/editor\\?code=${code}&name=${encodeURIComponent(acc.name)}$`)
     );
     // server 参数已固化
     const saved = await page.evaluate(() => localStorage.getItem("polyphony.server"));
     expect(saved).toBe("http://localhost:3001");
   });
 
-  test("无房间码:登录态回首页", async ({ page }) => {
+  test("无文档码:登录态回首页", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/join");
     await expect(page).toHaveURL("/");
   });
 
-  test("超长码截断到 8 位:?join 预填与手输进同一房间(回归)", async ({ page }) => {
-    await loginTestAccount(page);
-    // ?join= 传 10 位码 → 预填应截断为 8 位进入
-    await page.goto("/?join=ABCDEFGHIJ");
-    await expect(page.locator("#roomCode")).toHaveValue("ABCDEFGH");
+  test("超长码截断到 8 位:?join 预填与手输进同一文档(回归)", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    // 建两个真实文档,把完整码 pad 到 10 位:截断后应恰好等于码本身
+    const codeA = await createDoc(acc.token);
+    const codeB = await createDoc(acc.token);
+    const longA = codeA + "ZZ"; // 10 位,截断 = codeA
+    const longB = codeB + "ZZ";
+    await page.goto(`/?join=${longA}`);
+    await expect(page.locator("#roomCode")).toHaveValue(codeA);
     await page.getByRole("button", { name: "加入文档" }).click();
-    await expect(page).toHaveURL(/\/editor\?code=ABCDEFGH/);
+    await expect(page).toHaveURL(new RegExp(`/editor\\?code=${codeA}`));
 
     // /join 直达路径同样截断
-    await page.goto("/join?code=KLMNOPQRST");
-    await expect(page).toHaveURL(/\/editor\?code=KLMNOPQR/);
+    await page.goto(`/join?code=${longB}`);
+    await expect(page).toHaveURL(new RegExp(`/editor\\?code=${codeB}`));
   });
 });

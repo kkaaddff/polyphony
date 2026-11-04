@@ -1,12 +1,36 @@
-// 账号鉴权客户端:token 存取(localStorage)、带 Bearer 的 fetch、当前账号。
-// token 由 Web 端「创建账号」获得(一次性展示),各端粘贴登录;WS 经
-// useCollaboration 的 params 携带,HTTP 一律走 authFetch。
+// 账号鉴权客户端(v4):设备凭据 = poly_d_<deviceId>_<secret>,secret 由本机生成,
+// 服务端只存哈希、从不下发(docs/identity-and-sharing.md §4.1/§4.6)。
+// 凭据存 localStorage;HTTP 一律走 authFetch(Bearer),WS 由 useCollaboration 子协议注入。
 import { useCallback, useEffect, useState } from "react";
 import { getServerBase, saveServer } from "@/lib/serverConfig";
+import { platformInfo } from "@/platform";
 
 const TOKEN_KEY = "polyphony.token";
+const UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 export type Account = { id: string; name: string };
+
+// ---------- 本地秘密与凭据拼装 ----------
+
+/** 生成 48 hex(24 字节)设备秘密。getRandomValues 在非安全上下文同样可用。 */
+export function newDeviceSecret(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function assembleToken(deviceId: string, secret: string): string {
+  return `poly_d_${deviceId}_${secret}`;
+}
+
+export function parseCredential(
+  token: string
+): { deviceId: string; secret: string } | null {
+  const m = token.match(new RegExp(`^poly_d_(${UUID_RE})_([0-9a-f]{48})$`));
+  return m ? { deviceId: m[1], secret: m[2] } : null;
+}
+
+// ---------- 存取 ----------
 
 export function getToken(): string {
   try {
@@ -32,6 +56,83 @@ export function clearToken(): void {
   }
 }
 
+/** 清全部本地数据:凭据 + 文档缓存(IndexedDB)+ 最近房间。退出登录/注销/清理 v3 残留共用。 */
+export function clearAllLocalData(): void {
+  clearToken();
+  try {
+    window.localStorage.removeItem("polyphony.recentRooms");
+  } catch {
+    /* 忽略 */
+  }
+  void clearRoomCaches();
+}
+
+/** 删除本机全部文档缓存(polyphony-room-* IndexedDB 库)。 */
+export async function clearRoomCaches(): Promise<void> {
+  try {
+    if (typeof indexedDB.databases === "function") {
+      const dbs = await indexedDB.databases();
+      for (const db of dbs) {
+        if (typeof db.name === "string" && db.name.startsWith("polyphony-room-")) {
+          indexedDB.deleteDatabase(db.name);
+        }
+      }
+    } else {
+      // 兜底:按最近房间列表逐个删
+      let rooms: string[] = [];
+      try {
+        const raw = window.localStorage.getItem("polyphony.recentRooms");
+        const parsed: unknown = raw ? JSON.parse(raw) : null;
+        rooms = Array.isArray(parsed) ? parsed.map((r: { code?: string }) => r.code ?? "") : [];
+      } catch {
+        /* 无列表则放弃 */
+      }
+      for (const code of rooms) {
+        if (code) indexedDB.deleteDatabase(`polyphony-room-${code}`);
+      }
+    }
+  } catch {
+    /* 尽力而为 */
+  }
+}
+
+/** 删除单篇文档的本机缓存(退出房间时)。 */
+export function clearRoomCache(code: string): void {
+  try {
+    indexedDB.deleteDatabase(`polyphony-room-${code}`);
+  } catch {
+    /* 忽略 */
+  }
+}
+
+// ---------- 请求 ----------
+
+async function codedFetch(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+  return res;
+}
+
+async function throwCoded(res: Response, fallback: string): Promise<never> {
+  const data = (await res.json().catch(() => ({}))) as {
+    code?: string;
+    error?: string;
+    purgeAt?: number;
+  };
+  const err = new Error(data.error || fallback) as Error & {
+    code?: string;
+    purgeAt?: number;
+  };
+  err.code = data.code;
+  err.purgeAt = data.purgeAt;
+  throw err;
+}
+
 /** 带 Bearer 的 fetch;401 统一清 token 并回引导页(登录态失效只有这一种来源)。 */
 export async function authFetch(input: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, {
@@ -49,31 +150,94 @@ export async function authFetch(input: string, init?: RequestInit): Promise<Resp
   return res;
 }
 
-/** 创建账号(Web 独占流程;先固化服务器地址再请求)。返回一次性明文 token。 */
-export async function createAccount(server: string, name: string): Promise<{ token: string; name: string }> {
+/** 创建账号(全端,V6):本地生成 secret;响应只含 deviceId+一次性恢复密钥。 */
+export async function createAccount(
+  server: string,
+  name: string
+): Promise<{ token: string; name: string; recoveryKey: string }> {
   saveServer(server.trim());
-  const res = await fetch(`${getServerBase()}/auth/create`, {
+  const secret = newDeviceSecret();
+  const res = await codedFetch(`${getServerBase()}/auth/create`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, secret, platform: platformInfo() }),
   });
-  const data = (await res.json().catch(() => ({}))) as { token?: string; code?: string; error?: string };
-  if (!res.ok) {
-    const err = new Error(data.error || "create failed") as Error & { code?: string };
-    err.code = data.code;
-    throw err;
-  }
-  return { token: data.token!, name };
+  if (!res.ok) await throwCoded(res, "create failed");
+  const data = (await res.json()) as { deviceId: string; recoveryKey: string; name: string };
+  const token = assembleToken(data.deviceId, secret);
+  setToken(token);
+  return { token, name: data.name, recoveryKey: data.recoveryKey };
 }
 
-/** 校验 token(粘贴登录):有效返回账号信息。 */
-export async function verifyLogin(server: string, token: string): Promise<Account> {
+/** 恢复密钥 → 兑换本机设备凭据。 */
+export async function exchangeRecovery(
+  server: string,
+  key: string
+): Promise<Account & { token: string }> {
   saveServer(server.trim());
+  const secret = newDeviceSecret();
+  const res = await codedFetch(`${getServerBase()}/auth/exchange`, {
+    method: "POST",
+    body: JSON.stringify({ key: key.trim(), secret, platform: platformInfo() }),
+  });
+  if (!res.ok) await throwCoded(res, "exchange failed");
+  const data = (await res.json()) as { deviceId: string; name: string };
+  const token = assembleToken(data.deviceId, secret);
+  // 兑换成功 = 凭据有效;取账号 id 供顶栏
+  const me = await fetch(`${getServerBase()}/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const acc = me.ok ? ((await me.json()) as Account) : { id: "", name: data.name };
+  setToken(token);
+  return { ...acc, name: data.name, token };
+}
+
+/** 撤销注销(恢复密钥,无会话;注销后本就无设备可会话)。 */
+export async function restoreDeletedAccount(
+  server: string,
+  key: string
+): Promise<Account & { token: string }> {
+  saveServer(server.trim());
+  const secret = newDeviceSecret();
+  const res = await codedFetch(`${getServerBase()}/auth/account/restore`, {
+    method: "POST",
+    body: JSON.stringify({ key: key.trim(), secret, platform: platformInfo() }),
+  });
+  if (!res.ok) await throwCoded(res, "restore failed");
+  const data = (await res.json()) as { deviceId: string; name: string };
+  const token = assembleToken(data.deviceId, secret);
+  setToken(token);
+  return { id: "", name: data.name, token };
+}
+
+/** 服务端退出登录 = 吊销本机凭据(失败不阻断本地清理)。 */
+export async function logoutRemote(): Promise<void> {
+  try {
+    await authFetch(`${getServerBase()}/auth/logout`, { method: "POST" });
+  } catch {
+    /* 网络失败时设备留在列表,可在他端吊销 */
+  }
+}
+
+/** 校验凭据(登录/展示用)。 */
+export async function verifyLogin(token: string): Promise<Account> {
   const res = await fetch(`${getServerBase()}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(String(res.status));
   return (await res.json()) as Account;
+}
+
+/**
+ * v3 本地残留一次性清理(应用启动时,docs/identity-and-sharing.md §4.6):
+ * 存有凭据但不是 poly_d_ 格式 → 清凭据 + 全部文档缓存 + 最近房间。
+ * 返回是否执行了清理(调用方据此重定向欢迎页)。
+ */
+export function cleanupV3Local(): boolean {
+  const token = getToken();
+  if (!token) return false;
+  if (token.startsWith("poly_d_")) return false;
+  clearAllLocalData();
+  return true;
 }
 
 /** 当前登录账号(供顶栏身份展示与默认用户名)。 */
@@ -108,4 +272,45 @@ export function useAccount(): { account: Account | null; reload: () => void } {
   }, [reload]);
 
   return { account, reload };
+}
+
+// ---------- 设备与账号管理(§4.4/§4.7,Settings 页) ----------
+
+export type DeviceInfo = {
+  id: string;
+  label: string;
+  createdAt: number;
+  lastSeenAt: number | null;
+  current: boolean;
+};
+
+export async function fetchDevices(): Promise<DeviceInfo[]> {
+  const res = await authFetch(`${getServerBase()}/auth/devices`);
+  if (!res.ok) await throwCoded(res, "devices failed");
+  const data = (await res.json()) as { devices?: DeviceInfo[] };
+  return Array.isArray(data.devices) ? data.devices : [];
+}
+
+export async function revokeDeviceById(deviceId: string): Promise<void> {
+  const res = await authFetch(`${getServerBase()}/auth/devices/${encodeURIComponent(deviceId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) await throwCoded(res, "revoke failed");
+}
+
+export async function regenerateRecoveryKey(): Promise<string> {
+  const res = await authFetch(`${getServerBase()}/auth/recovery/regenerate`, { method: "POST" });
+  if (!res.ok) await throwCoded(res, "regenerate failed");
+  const data = (await res.json()) as { recoveryKey: string };
+  return data.recoveryKey;
+}
+
+/** 注销账号:输入账号名确认;成功后调用方清本地回欢迎页。 */
+export async function deleteAccountRemote(name: string): Promise<void> {
+  const res = await authFetch(`${getServerBase()}/auth/account/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) await throwCoded(res, "account delete failed");
 }

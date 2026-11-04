@@ -27,7 +27,8 @@ import {
 } from "@mdxeditor/editor";
 
 export function createEditorPlugins(
-  imageUploadHandler: (image: File) => Promise<string>
+  imageUploadHandler: (image: File) => Promise<string>,
+  imagePreviewHandler?: (src: string) => Promise<string>
 ) {
   return [
     headingsPlugin(),
@@ -39,7 +40,7 @@ export function createEditorPlugins(
     codeBlockPlugin(),
     thematicBreakPlugin(),
     frontmatterPlugin(),
-    imagePlugin({ imageUploadHandler }),
+    imagePlugin({ imageUploadHandler, imagePreviewHandler: imagePreviewHandler ?? null }),
     markdownShortcutPlugin(),
     toolbarPlugin({
       toolbarContents: () => (

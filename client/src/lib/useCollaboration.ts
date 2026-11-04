@@ -22,6 +22,9 @@ interface UseCollaborationProps {
   onUsersChange: Dispatch<SetStateAction<User[]>>;
   /** 共享房间名变化时回调（来自 Yjs meta map，房间内全员同步）。 */
   onRoomNameChange: (name: string) => void;
+  /** 服务端主动关闭文档连接(4004 不存在/已清除,4010 回收站,L12)。
+   *  调用方应清本机缓存并退出编辑器。 */
+  onDocUnavailable?: (kind: "missing" | "trashed") => void;
 }
 
 // 用户标识色(USER_COLORS/getUserColor)已抽至 ./userColors,与头像共用。
@@ -64,6 +67,7 @@ export function useCollaboration({
   onContentChange,
   onUsersChange,
   onRoomNameChange,
+  onDocUnavailable,
 }: UseCollaborationProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +147,16 @@ export function useCollaboration({
       }
     });
 
-    provider.on("connection-close", () => {
+    let docUnavailableFired = false;
+    provider.on("connection-close", (event: { code?: number }) => {
+      // 服务端定向关闭(L12):4004 不存在/已清除,4010 回收站 → 清缓存退出
+      if (event?.code === 4004 || event?.code === 4010) {
+        if (!docUnavailableFired) {
+          docUnavailableFired = true;
+          onDocUnavailable?.(event.code === 4010 ? "trashed" : "missing");
+        }
+        return;
+      }
       // 稳定错误码：由 Editor 渲染层翻译（避免闭包持 locale、provider 随语言重建断线）
       setError("ERR_CONNECTION_CLOSED");
     });

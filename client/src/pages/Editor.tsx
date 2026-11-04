@@ -7,7 +7,9 @@ import "@/lib/fixTableCopy"; // 修复表格无法拷贝（给 TableNode 补 exp
 import { useCollaboration } from "@/lib/useCollaboration";
 import { getServerBase } from "@/lib/serverConfig";
 import { upsertRecentRoom } from "@/lib/storage";
-import { authFetch, useAccount } from "@/lib/auth";
+import { authFetch, clearRoomCache, useAccount } from "@/lib/auth";
+import { uploadAttachment, exportDoc, deleteDoc, getDocStatus } from "@/lib/docs";
+import { prepImageForUpload } from "@/lib/imagePrep";
 import { useT } from "@/i18n";
 import { createEditorPlugins } from "@/components/editorConfig";
 import { RoomHeader } from "@/components/RoomHeader";
@@ -83,6 +85,11 @@ export default function Editor() {
     },
     onUsersChange: setUsers,
     onRoomNameChange: setRoomName,
+    onDocUnavailable: (kind) => {
+      clearRoomCache(roomCode);
+      alert(kind === "trashed" ? t("docs.trashedAlert") : t("docs.missingAlert"));
+      navigate("/", { replace: true });
+    },
   });
 
   // 共享房间名同步到本地「最近房间」快照与服务端房间簿，首页列表随之保鲜。
@@ -95,7 +102,7 @@ export default function Editor() {
     authFetch(`${getServerBase()}/rooms/enter`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: roomCode, name: roomName }),
+      body: JSON.stringify({ code: roomCode }),
     }).catch(() => {
       /* 登记失败不打断编辑 */
     });
@@ -112,45 +119,82 @@ export default function Editor() {
     [applyLocalChange]
   );
 
-  const handleImageUpload = useCallback(async (file: File) => {
-    const formData = new FormData();
-    formData.append("image", file);
-    // 运行时解析服务器地址（直连 IP 或同源）;上传需登录(authFetch 自动带 Bearer)
-    const baseUrl = getServerBase();
-    try {
-      const response = await authFetch(`${baseUrl}/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        const key = UPLOAD_ERROR_KEYS[errorData.code as string];
-        throw new Error(key ? t(key) : errorData.error || t("errors.E_UPLOAD"));
+  // v4 上传(L24/L11):客户端重编码(去元数据/压长边)→ 按文档归属登记;
+  // 文档里只写相对路径,显示时由 previewHandler 补全服务器地址。
+  const handleImageUpload = useCallback(
+    async (file: File) => {
+      try {
+        const prep = await prepImageForUpload(file);
+        if (!prep.ok) {
+          throw new Error(
+            prep.error === "gif-too-large"
+              ? t("errors.E_FILE_SIZE")
+              : t("editor.imagePrepFail")
+          );
+        }
+        return await uploadAttachment(roomCode, prep.blob, prep.filename);
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        const key = code ? UPLOAD_ERROR_KEYS[code] : undefined;
+        const msg =
+          (key ? t(key) : undefined) ??
+          (error instanceof Error ? error.message : t("editor.unknownError"));
+        alert(t("editor.uploadFail", { msg }));
+        throw error;
       }
+    },
+    [roomCode, t]
+  );
 
-      const data = await response.json();
-      // 返回完整的 URL
-      return `${baseUrl}${data.url}`;
-    } catch (error) {
-      console.error("image upload failed:", error);
-      alert(
-        t("editor.uploadFail", {
-          msg: error instanceof Error ? error.message : t("editor.unknownError"),
-        })
-      );
-      throw error;
-    }
-  }, [t]);
+  // 相对路径 → 按当前服务器地址显示(多地址访问/迁移不裂图)
+  const imagePreviewHandler = useCallback(
+    (src: string) =>
+      Promise.resolve(src.startsWith("/uploads/") ? getServerBase() + src : src),
+    []
+  );
 
   // 插件数组只在 upload handler 变化时重建（handler 已 useCallback，实际稳定）
   const plugins = useMemo(
-    () => createEditorPlugins(handleImageUpload),
-    [handleImageUpload]
+    () => createEditorPlugins(handleImageUpload, imagePreviewHandler),
+    [handleImageUpload, imagePreviewHandler]
   );
 
   // 移动端在线用户抽屉:顶栏「👥 n」事件触发;ESC/遮罩关闭(桌面常驻栏不受影响)
   const [usersDrawer, setUsersDrawer] = useState(false);
+
+  // 文档操作:导出(任何成员)/删除(仅所有者);所有权进入时查一次
+  const [isOwner, setIsOwner] = useState(false);
+  useEffect(() => {
+    if (!roomCode) return;
+    getDocStatus(roomCode)
+      .then((st) => setIsOwner(st.status === "active" && st.isOwner))
+      .catch(() => setIsOwner(false));
+  }, [roomCode]);
+  const [docBusy, setDocBusy] = useState(false);
+  const doExport = async () => {
+    setDocBusy(true);
+    try {
+      const url = await exportDoc(roomCode);
+      window.location.assign(`${getServerBase()}${url}`);
+    } catch {
+      alert(t("docs.createFail"));
+    } finally {
+      setDocBusy(false);
+    }
+  };
+  const doDelete = async () => {
+    if (!window.confirm(t("docs.deleteConfirm", { code: roomCode }))) return;
+    setDocBusy(true);
+    try {
+      await deleteDoc(roomCode);
+      clearRoomCache(roomCode);
+      navigate("/", { replace: true });
+    } catch {
+      alert(t("docs.deleteFail"));
+    } finally {
+      setDocBusy(false);
+    }
+  };
   useEffect(() => {
     const open = () => setUsersDrawer(true);
     const onKey = (e: KeyboardEvent) => {
@@ -198,9 +242,27 @@ export default function Editor() {
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 {t("editor.docContent")}
               </span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                {t("editor.charCount", { n: content.length })}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {t("editor.charCount", { n: content.length })}
+                </span>
+                <button
+                  onClick={() => void doExport()}
+                  disabled={docBusy}
+                  className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                >
+                  {t("editor.exportBtn")}
+                </button>
+                {isOwner && (
+                  <button
+                    onClick={() => void doDelete()}
+                    disabled={docBusy}
+                    className="px-2 py-1 rounded border border-red-300 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {t("editor.deleteBtn")}
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex-1 overflow-auto">
               <MDXEditor

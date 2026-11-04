@@ -15,7 +15,7 @@ import { runResetV3 } from './resetV3.js';
 import { authenticate } from './auth.js';
 import { startSweeper } from './sweeper.js';
 import { makePersistence, checkDocForConnection, flushAllSync } from './docStore.js';
-import { authRouter } from './routes/auth.js';
+import { authRouter, roomsRouter } from './routes/auth.js';
 import { pairRouter } from './routes/pair.js';
 import { attachmentsRouter } from './routes/attachments.js';
 import { docsRouter } from './routes/docs.js';
@@ -92,6 +92,13 @@ app.use(
   authRouter({
     closeDeviceWs,
     closeDocWs,
+    liveUserCount: (code) => roomStats.get(code)?.clients.size ?? 0,
+  })
+);
+// 房间簿挂顶层 /rooms(设计契约;不带 /auth 前缀)
+app.use(
+  '/rooms',
+  roomsRouter({
     liveUserCount: (code) => roomStats.get(code)?.clients.size ?? 0,
   })
 );

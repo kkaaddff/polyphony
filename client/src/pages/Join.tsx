@@ -37,7 +37,7 @@ export default function Join() {
       return;
     }
 
-    verifyLogin(server ?? "", getToken())
+    verifyLogin(getToken())
       .then((acc) => enter(acc.name))
       .catch(() => {
         setMessage(t("join.needName"));

@@ -1,6 +1,9 @@
 // 共用工具：localStorage 预置、alert 捕获。
-// 注意 username 的存储格式：Home 走 useLocalStorageState（JSON.stringify），
-// recentRooms 为对象数组 —— 预置必须与真实写入格式一致。
+// v4:账号创建由本机生成 secret(服务端只存哈希、从不下发),
+// helper 用 Node crypto 复刻客户端拼装 poly_d_<deviceId>_<secret>。
+import { randomBytes } from "node:crypto";
+import type { Page } from "@playwright/test";
+
 export const USERNAME_KEY = "polyphony.username";
 export const RECENT_ROOMS_KEY = "polyphony.recentRooms";
 export const SERVER_KEY = "polyphony.server";
@@ -9,22 +12,40 @@ export const TOKEN_KEY = "polyphony.token";
 
 const API = "http://localhost:3001";
 
-/** 对本地协同服务创建测试账号(名字唯一);返回一次性明文 token。 */
-export async function createAccount(): Promise<{ name: string; token: string }> {
+export type TestAccount = { name: string; token: string; recoveryKey: string };
+
+/** 对本地协同服务创建测试账号(名字唯一);本地生成 secret,返回拼装好的设备凭据。 */
+export async function createAccount(): Promise<TestAccount> {
   const name = `e2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const secret = randomBytes(24).toString("hex");
   const res = await fetch(`${API}/auth/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, secret }),
   });
   if (!res.ok) throw new Error(`createAccount failed: ${res.status}`);
-  return (await res.json()) as { name: string; token: string };
+  const data = (await res.json()) as { deviceId: string; recoveryKey: string };
+  return { name, token: `poly_d_${data.deviceId}_${secret}`, recoveryKey: data.recoveryKey };
+}
+
+/** 服务端建文档(服务端生成 8 位码,创建者即所有者)。 */
+export async function createDoc(token: string, name?: string): Promise<string> {
+  const res = await fetch(`${API}/docs`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`createDoc failed: ${res.status}`);
+  return ((await res.json()) as { code: string }).code;
 }
 
 type RecentRoomSeed = { code: string; name: string; lastUsed?: number };
 
 export async function seedStorage(
-  page: import("@playwright/test").Page,
+  page: Page,
   opts: {
     username?: string;
     recentRooms?: RecentRoomSeed[];
@@ -70,15 +91,15 @@ export async function seedStorage(
   });
 }
 
-/** 登录态快捷方式:创建测试账号并把 token 注入页面。返回账号信息。 */
-export async function loginTestAccount(page: import("@playwright/test").Page) {
+/** 登录态快捷方式:创建测试账号并把凭据注入页面。返回账号信息。 */
+export async function loginTestAccount(page: Page): Promise<TestAccount> {
   const acc = await createAccount();
   await seedStorage(page, { token: acc.token });
   return acc;
 }
 
 /** 捕获原生 alert/confirm 的文案（自动 accept）。 */
-export function captureDialogs(page: import("@playwright/test").Page) {
+export function captureDialogs(page: Page) {
   const messages: string[] = [];
   page.on("dialog", (d) => {
     messages.push(d.message());
@@ -88,7 +109,7 @@ export function captureDialogs(page: import("@playwright/test").Page) {
 }
 
 /** 首页头像菜单 → 分享本站:打开弹层(服务器地址现只在弹层/设置里可见)。 */
-export async function openShareSite(page: import("@playwright/test").Page) {
+export async function openShareSite(page: Page) {
   await page.getByTitle("账号菜单").click();
   await page.getByRole("menuitem", { name: "分享本站" }).click();
   const heading = page.getByRole("heading", { name: "扫码访问本站" });
