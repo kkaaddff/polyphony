@@ -34,6 +34,7 @@
 | 28 | Android 固定 debug 签名（v3.4.1）：keystore 存 GitHub secret，CI 构建前恢复到 `~/.android/debug.keystore` | 实踩：GitHub runner 每次现生成一次性 debug keystore，APK 签名互不匹配，每次发版只能卸载重装。PKCS12 用 openssl 本地生成（alias `androiddebugkey`/口令 `android`，JDK9+ 的 JKS 加载器自动识别），base64 进 secret `ANDROID_DEBUG_KEYSTORE_BASE64`；本地备份 `secrets/android-debug.keystore`（gitignored）。放弃提交进仓库：GitHub 仓公开，签名材料不可入库 |
 | 29 | 顶部安全区：`viewport-fit=cover` + 页面根 `pt-[env(safe-area-inset-top)] box-border`（v3.4.1） | targetSdk≥35 强制 edge-to-edge，WebView 延伸进状态栏压住顶栏。按页根加而非 `#root` 统一加：`box-border` 让 padding 计入 `h-screen`/`min-h-screen`，不产生整页滚动；桌面/测试浏览器 env()=0 零影响，e2e 断言不变 |
 | 30 | UI 精简（v3.5.0，验收评审驱动）：品牌去中文（仅 UI 串/窗口/托盘）、首页设置收敛进头像菜单、编辑器顶栏收敛为「👥 n ▾」菜单 + 房间号点击复制（toast）、工具栏双行换行、在线用户底部面板、IME `interactive-widget=resizes-content` | localStorage 键/`polyphony:open-users` 事件名/仓库名不动（迁移成本）；软键盘走 Web 标准方案，manifest `adjustResize` 仅兜底且必须打在 `<activity>` 上（写 `<application>` 静默失效）；toast 手写不引依赖，`pointer-events-none` 不挡 e2e 点击 |
+| 31 | App 壳去 web 化交互（v3.6.0）：双指/双击缩放**全端禁**（index.html 静态 meta 直接带 `maximum-scale=1 + user-scalable=no`，用户拍板「与 App 交互一致」优先于缩放无障碍；输入框聚焦自动放大随之消失）；全局 `overscroll-behavior:none` 禁下拉刷新与边缘发光、`-webkit-tap-highlight-color:transparent` 去点击灰闪、`touch-action:manipulation` 去双击延迟、`user-select:none` 禁 UI 铬件长按选中（`input/textarea/[contenteditable]` 重新放开，token 展示页 `select-all` 特异性更高不受影响） | WebView 把整套浏览器行为带进 App：双指缩放、误触下拉刷新重载打断协同编辑、按钮灰闪、长按 UI 出选择浮层——原生 App 均无此交互。曾考虑「仅 App 壳禁、Web 留缩放」的运行时分流，用户选择一致化后删繁就简走静态 meta。e2e ui-mobile 加计算样式基线守护 |
 
 ## 坑清单（按"再遇到怎么识别"组织）
 

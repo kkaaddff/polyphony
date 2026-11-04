@@ -3,6 +3,12 @@
 本文件记录面向用户的显著变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- **全端禁双指缩放与双击放大**（真机审计发现 WebView 保留了浏览器式缩放；手机浏览器访问 Web 版同样禁用，与 App 交互一致）。同批「去 web 化」交互修复：禁下拉刷新与边缘过滚（误触重载会打断协同编辑）、去除按钮点击灰闪、UI 铬件不可长按选中（输入框与文档正文不受影响）。
+
 ## [3.5.0] - 2026-11-02
 
 品牌英文化 + 顶栏/交互大改(验收评审驱动)。**升级说明:Android 开发环境需重跑 `npm run android:init`(或 `node scripts/android-patch.mjs`)以生效新的软键盘补丁;普通用户覆盖安装即可。**

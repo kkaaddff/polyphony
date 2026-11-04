@@ -47,3 +47,31 @@ body {
   flex-wrap: wrap;
   row-gap: 2px;
 }
+
+/*
+ * App 壳/移动端交互去 web 化（v3.6.0）：浏览器式行为泄漏进 App 的系统性修复。
+ * - overscroll-behavior:none —— 禁下拉刷新与边缘发光：SPA 内部滚动，误触重载会打断协同编辑；
+ * - -webkit-tap-highlight-color —— 禁按钮点击灰闪（原生 App 无此反馈）；
+ * - touch-action:manipulation —— 去双击缩放延迟（双指缩放本身由 index.html 的
+ *   viewport meta 全端禁用：maximum-scale=1 + user-scalable=no，见 ADR #31）；
+ * - user-select:none —— UI 铬件不可长按选中（杜绝蓝色选择浮层/复制 callout）；
+ *   输入框与 [contenteditable]（MDXEditor 正文）重新放开——文档内容必须可选可编辑，
+ *   token 一次性展示页的 select-all 工具类特异性更高，不受影响。
+ */
+html {
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable] {
+  -webkit-user-select: auto;
+  user-select: auto;
+}

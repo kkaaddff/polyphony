@@ -68,6 +68,27 @@ async function seedThreeRooms(page: Page, token: string) {
   await page.goto("/");
 }
 
+test.describe("去 web 化交互基线(v3.6.0)", () => {
+  test("禁下拉刷新/点击灰闪/UI 长按选中;输入区可选中;Web 版保留缩放", async ({ page }) => {
+    await page.goto("/welcome");
+    const styles = await page.evaluate(() => ({
+      overscroll: getComputedStyle(document.documentElement).overscrollBehavior,
+      tapHighlight: getComputedStyle(document.body).webkitTapHighlightColor,
+      bodySelect: getComputedStyle(document.body).userSelect,
+      inputSelect: getComputedStyle(document.querySelector("#server")!).userSelect,
+      viewport: document
+        .querySelector('meta[name="viewport"]')!
+        .getAttribute("content"),
+    }));
+    expect(styles.overscroll).toBe("none");
+    expect(styles.tapHighlight).toBe("rgba(0, 0, 0, 0)");
+    expect(styles.bodySelect).toBe("none");
+    expect(styles.inputSelect).not.toBe("none");
+    // 全端禁缩放(ADR #31:用户拍板一致性优先):静态 meta 必须带 user-scalable=no
+    expect(styles.viewport).toMatch(/user-scalable=no/i);
+  });
+});
+
 test.describe("/welcome(移动)", () => {
   test("创建表单:不破版、按钮可见可点", async ({ page }) => {
     await page.goto("/welcome");

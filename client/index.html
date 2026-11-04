@@ -6,8 +6,10 @@
          配合各页面根 pt-[env(safe-area-inset-top)] 留出顶部安全区（桌面/浏览器 env=0 无影响）。
          interactive-widget=resizes-content（Chromium/WebView 108+）：软键盘弹出时压缩布局视口而非
          整页上推 —— h-screen 根收缩、顶栏钉住、只有编辑区被压缩；旧 WebView 优雅回落原行为。
+         maximum-scale=1 + user-scalable=no：全端（App 壳与手机浏览器）禁双指缩放/双击放大——
+         用户拍板：与 App 交互一致性优先于缩放无障碍；输入框聚焦自动放大随之消失（ADR #31）。
          Android App 侧另有 android-patch.mjs 的 windowSoftInputMode=adjustResize 兜底 -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content, maximum-scale=1.0, user-scalable=no" />
     <link rel="icon" href="/favicon.ico" />
     <!-- 中性占位：首帧 JS 按 locale 覆盖 title 与 lang（i18n/index.tsx） -->
     <title>Polyphony</title>
