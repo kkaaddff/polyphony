@@ -67,3 +67,4 @@ local-artifacts
 /client/src-tauri/icons/Square*Logo.png
 /client/src-tauri/icons/StoreLogo.png
 /client/src-tauri/icons/64x64.png
+/test-results/

@@ -8,6 +8,15 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createAccount, verifyToken, enterRoom, leaveRooms, getRooms } from './auth.js';
+import {
+  createPairing,
+  getPairingInfo,
+  claimPairing,
+  pollPairing,
+  confirmPairing,
+  cancelPairing,
+  listPairings,
+} from './pairing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,6 +106,115 @@ app.post('/rooms/leave', requireAuth, (req, res) => {
     return { ...r, userCount: live ? live.clients.size : 0 };
   });
   res.json({ rooms });
+});
+
+// ---------- 配对登录(扫码/邀请链接;契约见 docs/pairing-login.md §4.2) ----------
+
+// D15:含 token 的响应绝不可被中间盒/浏览器缓存
+app.use('/auth/pair', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
+/** pairing 状态机错误码 → HTTP 状态;只打 code 前 6 位,不打完整 code/token。 */
+function pairError(res, err) {
+  const status =
+    err.code === 'E_PAIR_EXPIRED' ? 410
+    : err.code === 'E_PAIR_CLAIMED' || err.code === 'E_PAIR_STATE' ? 409
+    : 400; // E_PAIR_KIND / E_PAIR_TOKEN
+  res.status(status).json({ error: err.message, code: err.code });
+}
+
+const pairLog = (event, p, extra = '') =>
+  console.log(
+    `[pair] ${event} kind=${p.kind} code=${p.code.slice(0, 6)}… account=${p.accountName}${extra}`
+  );
+
+// 创建配对(QR 固定 2 分钟;链接 5/15/30/60 分钟档)
+app.post('/auth/pair/create', requireAuth, (req, res) => {
+  try {
+    const kind = req.body?.kind;
+    const p = createPairing(req.account, kind, req.body?.ttlMinutes);
+    pairLog('create', { ...p, kind, accountName: req.account.name });
+    res.status(201).json(p);
+  } catch (err) {
+    pairError(res, err);
+  }
+});
+
+// 本账号全部未清扫配对(弹窗列表 + 红点;含终态供显示最终结果)
+app.get('/auth/pair/status', requireAuth, (req, res) => {
+  res.json({ pairings: listPairings(req.account.id) });
+});
+
+// 落地页预览(无鉴权;安全性由 128 位 code 熵承担)
+app.get('/auth/pair/info', (req, res) => {
+  try {
+    res.json(getPairingInfo(String(req.query.code ?? '')));
+  } catch (err) {
+    pairError(res, err);
+  }
+});
+
+// 认领(无鉴权):签发 claimKey,仅持钥者可 poll/取 token
+app.post('/auth/pair/claim', (req, res) => {
+  try {
+    const result = claimPairing(
+      String(req.body?.code ?? ''),
+      req.headers['user-agent']
+    );
+    pairLog('claim', { kind: '?', code: String(req.body?.code), accountName: result.accountName },
+      ` ua="${(req.headers['user-agent'] ?? '').slice(0, 60)}"`);
+    res.json(result);
+  } catch (err) {
+    pairError(res, err);
+  }
+});
+
+// 轮询(凭 code+claimKey):approved 首次命中交出 token(D15:POST,claimKey 不进 URL)
+app.post('/auth/pair/poll', (req, res) => {
+  try {
+    res.json(pollPairing(String(req.body?.code ?? ''), String(req.body?.key ?? '')));
+  } catch (err) {
+    pairError(res, err);
+  }
+});
+
+// 确认/拒绝(owner 专属):accept 时附上自己持有的明文 token 供中转(服务端只短暂驻留)
+app.post('/auth/pair/confirm', requireAuth, (req, res) => {
+  const code = String(req.body?.code ?? '');
+  const accept = Boolean(req.body?.accept);
+  const token = String(req.body?.token ?? '');
+  if (accept) {
+    const tokAccount = verifyToken(token);
+    if (!tokAccount || tokAccount.id !== req.account.id) {
+      return res
+        .status(400)
+        .json({ error: 'token 无效或不属于当前账号', code: 'E_PAIR_TOKEN' });
+    }
+  }
+  try {
+    const result = confirmPairing(code, req.account.id, accept, accept ? token : undefined);
+    console.log(
+      `[pair] confirm-${accept ? 'accept' : 'deny'} code=${code.slice(0, 6)}… account=${req.account.name}`
+    );
+    res.json(result);
+  } catch (err) {
+    pairError(res, err);
+  }
+});
+
+// 撤销(owner 专属,pending/claimed/approved 均可):发错链接的救济通道(D11)
+app.post('/auth/pair/cancel', requireAuth, (req, res) => {
+  try {
+    const result = cancelPairing(String(req.body?.code ?? ''), req.account.id);
+    console.log(
+      `[pair] cancel code=${String(req.body?.code).slice(0, 6)}… account=${req.account.name}`
+    );
+    res.json(result);
+  } catch (err) {
+    pairError(res, err);
+  }
 });
 
 

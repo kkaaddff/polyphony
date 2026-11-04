@@ -10,3 +10,8 @@ export function isTauri(): boolean {
 export function isDesktopTauri(): boolean {
   return isTauri() && !/android|ios|iphone|ipad/i.test(navigator.userAgent);
 }
+
+/** Android App（配对登录的扫码方,隐藏「登录新设备」出码入口）。 */
+export function isAndroidTauri(): boolean {
+  return isTauri() && /android/i.test(navigator.userAgent);
+}

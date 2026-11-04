@@ -1,13 +1,26 @@
-// 首次引导:创建账号(Web 独占,token 一次性展示)或粘贴 token 登录。
+// 首次引导:创建账号(Web 独占,token 一次性展示)、粘贴 token 或扫码配对登录。
 // 无 token 的任何路由都会被重定向到这里(App.tsx 守卫),?next= 携带回跳目标。
-import { useState } from "react";
+// 扫码支持配对码(/pair,登录)与房间码(/join,登录后自动进房)两种载荷。
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { getSavedServer } from "@/lib/serverConfig";
+import { getSavedServer, getServerBase, saveServer } from "@/lib/serverConfig";
 import { createAccount, setToken, verifyLogin } from "@/lib/auth";
+import { parseJoinPayload, parsePairPayload } from "@/lib/qr";
+import { claimPairing, pollPairing, formatRemain } from "@/lib/pairing";
+import { ScanModal } from "@/components/ScanModal";
 import { isTauri } from "@/platform";
 import { useT } from "@/i18n";
 
 type View = "form" | "token-once";
+
+// 扫码配对流程状态(null = 未在配对,显示常规表单)
+type PairErrorKind = "claimed" | "invalid" | "denied" | "cancelled" | "network";
+type PairView =
+  | { step: "claiming" }
+  | { step: "waiting"; accountName: string; expiresAt: number }
+  | { step: "error"; kind: PairErrorKind };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function Welcome() {
   const navigate = useNavigate();
@@ -25,8 +38,124 @@ export default function Welcome() {
   const [view, setView] = useState<View>("form");
   const [created, setCreated] = useState<{ token: string; name: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  // 扫码登录:配对流程视图 / 扫码弹层 / 房间码暂存回跳 / 提示条 / 秒级心跳
+  const [pairView, setPairView] = useState<PairView | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [nextOverride, setNextOverride] = useState<string | null>(null);
+  const [scanNotice, setScanNotice] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  const pairStopped = useRef(false);
 
-  const goNext = () => navigate(next, { replace: true });
+  useEffect(() => () => { pairStopped.current = true; }, []);
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // 房间码扫码暂存的回跳优先于 URL ?next=(扫了房间码再登录 → 直接进房)
+  const goNext = () => navigate(nextOverride ?? next, { replace: true });
+
+  // ---------- 扫码配对登录(docs/pairing-login.md §4.4 接收端 A) ----------
+
+  const runPairPoll = async (
+    base: string,
+    code: string,
+    claimKey: string,
+    expiresAt: number
+  ) => {
+    const startedAt = Date.now();
+    // 前 30s 每 1.5s,后退避 5s:长 TTL 链接可能等几分钟才确认(D13)
+    while (!pairStopped.current) {
+      await sleep(Date.now() - startedAt < 30_000 ? 1500 : 5000);
+      if (pairStopped.current) return;
+      try {
+        const r = await pollPairing(base, code, claimKey);
+        if (r.status === "approved") {
+          setToken(r.token);
+          // /auth/me 校验(token 刚从服务端取得,失败多为网络抖动,不阻断)
+          verifyLogin(base, r.token)
+            .catch(() => undefined)
+            .finally(goNext);
+          return;
+        }
+        if (r.status === "denied") {
+          setPairView({ step: "error", kind: "denied" });
+          return;
+        }
+        if (r.status === "cancelled") {
+          setPairView({ step: "error", kind: "cancelled" });
+          return;
+        }
+        if (Date.now() > expiresAt) {
+          setPairView({ step: "error", kind: "invalid" });
+          return;
+        }
+      } catch {
+        setPairView({ step: "error", kind: "invalid" });
+        return;
+      }
+    }
+  };
+
+  const startPair = async (base: string, code: string) => {
+    setPairView({ step: "claiming" });
+    try {
+      const r = await claimPairing(base, code);
+      setPairView({
+        step: "waiting",
+        accountName: r.accountName,
+        expiresAt: r.expiresAt,
+      });
+      void runPairPoll(base, code, r.claimKey, r.expiresAt);
+    } catch (e) {
+      const errCode = (e as { code?: string }).code;
+      setPairView({
+        step: "error",
+        kind:
+          errCode === "E_PAIR_CLAIMED"
+            ? "claimed"
+            : errCode === "E_PAIR_EXPIRED"
+              ? "invalid"
+              : "network",
+      });
+    }
+  };
+
+  const handleScanResult = (text: string) => {
+    setScanOpen(false);
+    setScanNotice("");
+    // 分发顺序:先配对码(/pair),后房间码(/join/裸码)——pair 不可再落进 join
+    const pair = parsePairPayload(text);
+    if (pair) {
+      if (pair.server) saveServer(pair.server);
+      void startPair(pair.server ?? getServerBase(), pair.code);
+      return;
+    }
+    const join = parseJoinPayload(text);
+    if (join) {
+      const params = new URLSearchParams({ code: join.code });
+      if (join.server) params.set("server", join.server);
+      setNextOverride(`/join?${params.toString()}`);
+      setScanNotice(t("welcome.pairScannedRoom"));
+      return;
+    }
+    setScanNotice(t("home.alertInvalidQr"));
+  };
+
+  const pairErrorText = (kind: PairErrorKind) => {
+    switch (kind) {
+      case "claimed":
+        return t("errors.E_PAIR_CLAIMED");
+      case "denied":
+        return t("pairPage.deniedTitle");
+      case "cancelled":
+        return t("pairPage.cancelledTitle");
+      case "network":
+        return t("welcome.errNetwork");
+      default:
+        return t("pairPage.invalid");
+    }
+  };
 
   const handleCreate = async () => {
     setBusy(true);
@@ -71,6 +200,44 @@ export default function Welcome() {
       /* 非安全上下文降级:选中态已可手动复制 */
     }
   };
+
+  // ---------- 扫码配对流程视图(覆盖常规表单) ----------
+  if (pairView) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 pt-[env(safe-area-inset-top)] box-border">
+        <div className="max-w-xl w-full bg-white rounded-2xl shadow-2xl p-8 text-center space-y-4">
+          {pairView.step === "claiming" && (
+            <p className="text-gray-500 text-sm py-8">…</p>
+          )}
+          {pairView.step === "waiting" && (
+            <>
+              <h1 className="text-xl font-bold text-gray-900">
+                {t("pairPage.waitingTitle")}
+              </h1>
+              <p className="text-sm text-gray-700">
+                {t("pairPage.waitingFor", { name: pairView.accountName })}
+              </p>
+              <p className="text-3xl font-mono font-bold text-blue-600">
+                {formatRemain(pairView.expiresAt, now)}
+              </p>
+              <div className="size-8 mx-auto rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
+            </>
+          )}
+          {pairView.step === "error" && (
+            <>
+              <p className="text-sm text-red-600 py-4">{pairErrorText(pairView.kind)}</p>
+              <button
+                onClick={() => setPairView(null)}
+                className="w-full py-3 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors"
+              >
+                {t("common.close")}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // ---------- token 一次性展示页 ----------
   if (view === "token-once" && created) {
@@ -227,6 +394,16 @@ export default function Welcome() {
               >
                 {t("welcome.loginBtn")}
               </button>
+              <button
+                type="button"
+                onClick={() => setScanOpen(true)}
+                className="w-full py-2.5 min-h-tap-44 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
+              >
+                {t("welcome.scanLoginBtn")}
+              </button>
+              {scanNotice && (
+                <p className="text-xs text-blue-600 break-words">{scanNotice}</p>
+              )}
             </div>
           )}
 
@@ -237,6 +414,10 @@ export default function Welcome() {
           )}
         </div>
       </div>
+
+      {scanOpen && (
+        <ScanModal onResult={handleScanResult} onClose={() => setScanOpen(false)} />
+      )}
     </div>
   );
 }

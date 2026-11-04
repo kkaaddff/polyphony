@@ -4,6 +4,7 @@ import Home from "@/pages/Home";
 import Editor from "@/pages/Editor";
 import Settings from "@/pages/Settings";
 import Join from "@/pages/Join";
+import Pair from "@/pages/Pair";
 import Welcome from "@/pages/Welcome";
 
 /** 登录守卫:无 token 一律去 /welcome,原地址放 ?next= 供登录后回跳。 */
@@ -45,6 +46,7 @@ export default function App() {
         }
       />
       <Route path="/join" element={<Join />} />
+      <Route path="/pair" element={<Pair />} />
     </Routes>
   );
 }

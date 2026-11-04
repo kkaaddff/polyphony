@@ -5,13 +5,15 @@ import { generateRoomCode, formatRelative } from "@/lib/roomCode";
 import { getServerBase, saveServer } from "@/lib/serverConfig";
 import { parseJoinPayload, buildJoinUrl } from "@/lib/qr";
 import { authFetch, clearToken, useAccount } from "@/lib/auth";
+import { fetchPairings, type PairingInfo } from "@/lib/pairing";
 import { useT } from "@/i18n";
 import { QrModal } from "@/components/QrModal";
 import { ScanModal } from "@/components/ScanModal";
+import { PairModal } from "@/components/PairModal";
 import { Menu, MenuItem } from "@/components/Menu";
 import { Avatar } from "@/components/Avatar";
 import { ScanIcon } from "@/components/icons";
-import { isDesktopTauri } from "@/platform";
+import { isDesktopTauri, isAndroidTauri } from "@/platform";
 import { onTrayAction, pushRecentRooms } from "@/platform/tray";
 
 type OnlineRoom = { code: string; userCount: number };
@@ -35,6 +37,9 @@ export default function Home() {
   const [qrFor, setQrFor] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [shareSite, setShareSite] = useState(false);
+  // 配对登录:弹窗开关 + 未清扫配对列表(红点/弹窗共用)
+  const [pairOpen, setPairOpen] = useState(false);
+  const [pairings, setPairings] = useState<PairingInfo[]>([]);
   // 右栏:我的房间 / 在线房间;批量管理模式(仅我的房间)
   const [tab, setTab] = useState<"mine" | "online">("mine");
   const [batch, setBatch] = useState(false);
@@ -93,6 +98,24 @@ export default function Home() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [fetchMine, fetchOnline]);
+
+  // 配对状态轮询(D13):有未清扫配对才轮询,弹窗开 1s / 关 5s,清空即停。
+  const refreshPairings = useCallback(() => {
+    fetchPairings()
+      .then(setPairings)
+      .catch(() => {
+        /* 401 由 authFetch 统一处理;网络失败静默 */
+      });
+  }, []);
+  const hasPairings = pairings.length > 0;
+  useEffect(() => {
+    if (!hasPairings && !pairOpen) return;
+    refreshPairings();
+    const id = window.setInterval(refreshPairings, pairOpen ? 1000 : 5000);
+    return () => window.clearInterval(id);
+  }, [hasPairings, pairOpen, refreshPairings]);
+  // 红点 = 存在 claimed(待你确认才值得打扰;pending/终态不亮)
+  const pairNeedsConfirm = pairings.some((p) => p.status === "claimed");
 
   // 统一进入房间:服务端登记 + 跳转(名字来自账号)
   const enterRoom = useCallback(
@@ -235,12 +258,23 @@ export default function Home() {
             buttonTitle={t("home.accountMenuTitle")}
             buttonClassName="flex items-center justify-center rounded-full p-1 min-w-tap-40 min-h-tap-40 hover:bg-white/70 transition-colors"
             buttonContent={
-              <Avatar
-                name={account?.name ?? t("common.anonymous")}
-                id={account?.id}
-              />
+              <div className="relative">
+                <Avatar
+                  name={account?.name ?? t("common.anonymous")}
+                  id={account?.id}
+                />
+                {pairNeedsConfirm && (
+                  <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+                )}
+              </div>
             }
           >
+            {!isAndroidTauri() && (
+              <MenuItem onClick={() => setPairOpen(true)}>
+                {t("pair.entry")}
+                {pairNeedsConfirm ? " ●" : ""}
+              </MenuItem>
+            )}
             <MenuItem onClick={() => navigate("/settings")}>
               {t("home.settingsLink")}
             </MenuItem>
@@ -523,6 +557,13 @@ export default function Home() {
       )}
       {scanOpen && (
         <ScanModal onResult={handleScanResult} onClose={() => setScanOpen(false)} />
+      )}
+      {pairOpen && (
+        <PairModal
+          pairings={pairings}
+          refresh={refreshPairings}
+          onClose={() => setPairOpen(false)}
+        />
       )}
     </div>
   );
