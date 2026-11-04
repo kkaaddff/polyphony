@@ -1,6 +1,6 @@
 # 身份与分享（v4.0）设计
 
-状态：**设计已定稿，待实现**（2026-11-04，经两轮拷问 + 回读 + 三轮改进评审）
+状态：**已实现**（2026-11-04 定稿，2026-11-05 实现于 v4 分支：服务端 `auth.js`/`pairing.js`/`routes/` + SQLite `db.js` + 客户端 `lib/auth.ts`/`lib/pairing.ts`/Welcome/Pair/Settings；单测 44 + 收敛冒烟 + e2e 77 全绿。实现与设计的三处对齐修订：房间簿端点挂顶层 `/rooms`（非 `/auth/rooms`）；`/rooms` 行内直接返回 `isOwner`；回收站行的 owner 书签可经 leave 移出列表（active 文档的 owner 行保护不变））
 取代：`docs/pairing-login.md`（v3.6.0 配对登录，未发版；其状态机、一次性、人工确认、撤销、红点、落地页在本方案中保留并扩展；claimKey 被「设备本地生成凭据」取代。D1–D15 仍有效，除非下文 §9 明确推翻）
 姊妹篇：`docs/document-lifecycle.md`（同属 v4.0）
 前置决策：ADR #4（QR 载荷 = Web URL）、#14（内网/受信威胁模型）、#24（账号体系，本方案推翻）

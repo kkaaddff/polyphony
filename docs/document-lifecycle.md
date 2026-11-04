@@ -1,6 +1,6 @@
 # 文档生命周期（v4.0）设计
 
-状态：**设计已定稿，待实现**（2026-11-05，经两轮拷问 + 回读 + 两轮改进评审）
+状态：**已实现**（2026-11-05 定稿并实现于 v4 分支：服务端 `docStore.js`/`attachments.js`/`exporter.js`/`sweeper.js` + 客户端 `lib/docs.ts`/`lib/imagePrep.ts`/`TrashModal`/Home/Editor；单测 44 + 收敛冒烟（含重启持久化演练）+ e2e 77 全绿）
 姊妹篇：`docs/identity-and-sharing.md`（同属 v4.0；本文的鉴权、设备会话、WS 子协议、**v4 全新开始**均以它为前提）
 前置决策：ADR #14（内网/受信威胁模型）、#18（Docker all-in-one，`data`/`uploads` 两个卷）、#25（房间簿在服务端）；`docs/decisions.md` 后续路线「服务端文档持久化」条目由本文落地
 

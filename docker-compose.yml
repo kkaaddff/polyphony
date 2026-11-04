@@ -21,5 +21,5 @@ volumes:
     # 固定卷名:不带 compose 项目前缀(CI 每次在 /tmp/polyphony-src 下 up,目录名不稳定)
     name: polyphony-uploads
   polyphony-data:
-    # 账号数据(accounts.json):token 哈希 + 房间簿
+    # v4 持久化:SQLite(polyphony.db)账号/文档快照/成员/附件登记
     name: polyphony-data
