@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **Linux 不再出 AppImage**（保留 deb）：Release 产物清单少一个易混淆的 `amd64.AppImage`；`*.deb` 照常供 Debian/Ubuntu 使用。
+
 ### 修复
 
 - **全端禁双指缩放与双击放大**（真机审计发现 WebView 保留了浏览器式缩放；手机浏览器访问 Web 版同样禁用，与 App 交互一致）。同批「去 web 化」交互修复：禁下拉刷新与边缘过滚（误触重载会打断协同编辑）、去除按钮点击灰闪、UI 铬件不可长按选中（输入框与文档正文不受影响）。
@@ -12,6 +16,7 @@
 ### 新增
 
 - **品牌图标定稿**「三声部辫」：替换借用的 Tauri 默认图标——靛蓝渐变上三条正弦带上下穿插成辫（多声部交叠仍各成一线），覆盖桌面/Android 自适应（含 Android 13+ 主题单色层）/iOS/Windows 全端，Web favicon 同步替换。源 SVG 入库 `client/src-tauri/icons/source/` 便于后续微调。
+- **CI 预接 macOS 签名 + 公证管线**：配齐 Apple 开发者 secrets 即自动正式签名公证（根治下载后报「已损坏」）；未配置时 Release 页自动附一行 `xattr` 解封命令说明。
 
 ## [3.5.0] - 2026-11-02
 

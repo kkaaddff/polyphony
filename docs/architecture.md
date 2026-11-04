@@ -10,7 +10,7 @@
 | Desktop (Tauri 2)    |  | Android (Tauri 2)    |  | Web (Vite dist)      |
 | mac dmg  aarch64     |  | arm64-v8a apk (v1)   |  | any browser          |
 | win nsis  x64        |  | barcode-scan plugin  |  | jsQR + getUserMedia  |
-| linux appimage+deb   |  | jsQR camera fallback |  | camera qr fallback   |
+| linux deb (x64)      |  | jsQR camera fallback |  | camera qr fallback   |
 | tray + offline idb   |  | cleartext ws allowed |  | same-origin ws       |
 +-----------|----------+  +-----------|----------+  +-----------|----------+
             |                         |                         |

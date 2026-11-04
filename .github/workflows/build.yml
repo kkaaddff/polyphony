@@ -1,4 +1,4 @@
-# 全产物构建流水线：一次触发出 Web + 三平台桌面 + Android。
+# 全产物构建流水线：一次触发出 Web + 桌面(mac/win/linux-deb) + Android。
 # 触发：手动 workflow_dispatch（默认创建 GitHub Release 挂全产物）/ 推 v* tag。
 # Release 标签：推 tag 时用 tag 名；手动触发用 v+tauri.conf.json 版本号（重复触发同版本会覆盖同名附件）。
 # 说明：本机无需 Rust/JDK——本地只跑 tsc/eslint/vite build 与收敛冒烟，出包一律走这里。
@@ -98,13 +98,11 @@ jobs:
             rust-targets: ""
             artifact-name: desktop-nsis-x64
             artifact-path: client/src-tauri/target/release/bundle/nsis/*-setup.exe
-          - os: ubuntu-latest # AppImage + deb（托盘需 ayatana 依赖）
-            args: --bundles appimage,deb
+          - os: ubuntu-latest # 仅 deb（AppImage 已裁：无人用且混淆产物清单）
+            args: --bundles deb
             rust-targets: ""
-            artifact-name: desktop-linux-x64
-            artifact-path: |
-              client/src-tauri/target/release/bundle/appimage/*.AppImage
-              client/src-tauri/target/release/bundle/deb/*.deb
+            artifact-name: desktop-deb-x64
+            artifact-path: client/src-tauri/target/release/bundle/deb/*.deb
     runs-on: ${{ matrix.os }}
     if: ${{ vars.DEPLOY_ENV == 'github' }}
     steps:
@@ -128,7 +126,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: 安装前端依赖
         working-directory: client
@@ -148,9 +146,35 @@ jobs:
 
       # tauri-action 负责桌面产物挂 Release；无 RELEASE_TAG 时传空 = 跳过上传（由上面的
       # upload-artifact 兜底）。它会自建缺失的 Release，与 web/android 的 gh release create 并发安全
+      # ---------- Apple 签名 + 公证（可选，secrets 门控）----------
+      # 根治「下载后 macOS 报已损坏」需要 Apple Developer Program（$99/年）:
+      #   Developer ID Application 证书导出 .p12 + App Store Connect API 密钥(.p8)。
+      # 配齐下列 repo secrets 后本流水线自动切换为正式签名+公证,未配则维持 adhoc:
+      #   APPLE_CERTIFICATE          = openssl base64 -A -in cert.p12 的输出
+      #   APPLE_CERTIFICATE_PASSWORD = p12 导出口令
+      #   APPLE_SIGNING_IDENTITY     = 可选,形如 "Developer ID Application: NAME (TEAMID)"(缺省从证书推断)
+      #   APPLE_API_KEY              = App Store Connect API 密钥 ID
+      #   APPLE_API_ISSUER           = Issuer ID
+      #   APPLE_API_KEY_B64          = AuthKey_<密钥ID>.p8 的 base64
+      - name: 准备 Apple 公证密钥
+        if: runner.os == 'macOS' && secrets.APPLE_API_KEY_B64 != ''
+        env:
+          KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+        run: |
+          printf '%s' "$KEY_B64" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+          echo "已落盘公证密钥 $RUNNER_TEMP/AuthKey.p8"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 空值时 tauri bundler 自动跳过签名/公证,不影响其余平台
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
         with:
           projectPath: client
           args: ${{ matrix.args }}
@@ -159,6 +183,27 @@ jobs:
           releaseBody: "CI 自动构建（run ${{ github.run_number }}）"
           releaseDraft: false
           prerelease: false
+
+      # 未签名档兜底:Release 正文自动附 xattr 解封说明(配了证书即消失)
+      - name: Release 附 macOS 未公证说明
+        if: runner.os == 'macOS' && env.RELEASE_TAG != '' && secrets.APPLE_CERTIFICATE == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BODY=$(gh release view "$RELEASE_TAG" --json body -q .body)
+          case "$BODY" in
+            *xattr*) echo "解封说明已存在,跳过" ;;
+            *) NOTE=$(cat <<'EOF'
+          ### macOS 首次打开
+          当前 dmg 为 adhoc 签名（未接 Apple 开发者公证），浏览器下载后 macOS 会误报「已损坏」。在终端执行一次即可解封：
+          ```sh
+          xattr -rd com.apple.quarantine /Applications/Polyphony.app
+          ```
+          EOF
+          )
+            gh release edit "$RELEASE_TAG" --notes "$BODY
+          $NOTE" ;;
+          esac
 
       # 手动触发也必须能下载产物（用户要求：触发即出全套可取回）
       - name: 上传桌面产物

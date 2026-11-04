@@ -19,7 +19,7 @@
 | 13 | 部署内化 `deploy/` + `npm run deploy` | tar over ssh（不依赖远端 rsync）+ nginx conf 版本化进仓库 + PM2 单进程（v3.1 起被 #18 取代，脚本删除、git 历史留档） |
 | 14 | CORS 全开、房间码即凭据、明文 ws | 内网/受信场景的产品定位；公网使用需自行 TLS 反代（如实文档化，不做假安全） |
 | 15 | 项目更名 coordination-v2 → **Polyphony/复调**（v3.1.0） | 巴赫复调：多独立声部无指挥收敛为一份总谱 = CRDT 语义；品牌/包名/identifier/存储键全量更名 |
-| 16 | 双仓流：私有 Gitea 开发主仓 + GitHub 发布仓 | dev push 即 CI 部署（含内部拓扑不外泄）；GitHub 只收 tag/release 面向公众；Gitea push mirror 自动灾备到 GitHub 私有镜像仓 |
+| 16 | 双仓流：私有 Gitea 开发主仓 + GitHub 发布仓 | dev push 即 CI 部署（含内部拓扑不外泄）；GitHub 只收 tag/release 面向公众。~~Gitea push mirror 自动灾备到 GitHub 私有镜像仓~~ 2026-11-04 用户拍板删掉镜像仓（polyphony-mirror，碍眼）：公开发布仓每次发版都收完整代码本身即有备份作用；Gitea 侧推送镜像配置需顺手关闭，否则每次 push 报同步失败 |
 | 17 | 存储键 `coordination.*` → `polyphony.*` 不做迁移 | 个人产品、成本大于收益；升级后重填用户名/服务器即可；已记入 CHANGELOG 升级说明 |
 | 18 | 自托管统一 Docker all-in-one（退役 PM2+OpenResty 链路） | 单容器=全功能、可复现、换机零成本；Yjs 房间态本就在内存（客户端 IndexedDB 兜底），容器化不引入新数据风险；上传图片进具名卷 |
 | 19 | Gitea CI：纯文档推送不部署 + 验证失败自动回滚 | README 错字不该踢在线用户下线；health+收敛冒烟双验证挡住坏构建；镜像按 git SHA 版本化 |
@@ -37,6 +37,7 @@
 | 31 | App 壳去 web 化交互（v3.6.0）：双指/双击缩放**全端禁**（index.html 静态 meta 直接带 `maximum-scale=1 + user-scalable=no`，用户拍板「与 App 交互一致」优先于缩放无障碍；输入框聚焦自动放大随之消失）；全局 `overscroll-behavior:none` 禁下拉刷新与边缘发光、`-webkit-tap-highlight-color:transparent` 去点击灰闪、`touch-action:manipulation` 去双击延迟、`user-select:none` 禁 UI 铬件长按选中（`input/textarea/[contenteditable]` 重新放开，token 展示页 `select-all` 特异性更高不受影响） | WebView 把整套浏览器行为带进 App：双指缩放、误触下拉刷新重载打断协同编辑、按钮灰闪、长按 UI 出选择浮层——原生 App 均无此交互。曾考虑「仅 App 壳禁、Web 留缩放」的运行时分流，用户选择一致化后删繁就简走静态 meta。e2e ui-mobile 加计算样式基线守护 |
 
 | 32 | 品牌图标定稿（v3.6.0）：「三声部辫」——靛蓝渐变（#4f46e5→#1e1b4b）squircle 上三条正弦带（白/天蓝/白）靠深色 halo 描边（150/98）做上下穿插；源 SVG + manifest 入库 `client/src-tauri/icons/source/`，`npx tauri icon` 生成全端套件；favicon 手工合成 48px PNG-in-ICO | 替换借用的 Tauri 默认图标。四稿评审（交织辫/合声圆/对位链/轮指波）选一：辫子直观表达「多声部交叠仍各成一线」；halo 分层是实现编织感的全部技巧（纯描边交叉糊成 X）。Android 自适应层：fg 缩 0.46 压幅 220 保证墨迹全落 66/108 安全区（~305px 半径），bg 满幅渐变，mono 全白给 13+ 主题图标。legacy 合成图经视觉模型复核（居中/边距 20%/满幅）。不出包平台的生成物（iOS AppIcon×16、MS Store Square/StoreLogo×10）与无引用的 64x64 裁出入库范围并 gitignore——`tauri icon` 每次全量再生成，不入库的不该出现在 status 里 |
+| 33 | macOS 签名+公证管线 secrets 门控接入（v3.6.0）：`APPLE_CERTIFICATE`(p12 base64)/`APPLE_CERTIFICATE_PASSWORD`/`APPLE_SIGNING_IDENTITY`(可推断省略)/`APPLE_API_KEY`+`APPLE_API_ISSUER`+`APPLE_API_KEY_B64`(公证) 六个 repo secrets 配齐自动生效，未配维持 adhoc 且 Release 正文自动附 `xattr -rd com.apple.quarantine` 解封说明（配了证书即自动消失，幂等） | adhoc+未公证 dmg 被浏览器打隔离标记后 Gatekeeper 一律报「已损坏」且新版 macOS 不给「仍要打开」入口，xattr 是唯一解——根治必须 Apple Developer Program（$99/年）出 Developer ID 证书走 notarytool。管线先行接入：secrets 为空时 tauri bundler 自动跳过，零成本等凭据 |
 ## 坑清单（按"再遇到怎么识别"组织）
 
 ### 构建/依赖

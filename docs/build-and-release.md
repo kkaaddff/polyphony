@@ -20,12 +20,13 @@
 | web | ubuntu | `web-dist.zip`（Vite dist） | ✓ |
 | desktop (mac) | macos-latest（arm64 runner） | `Polyphony_<ver>_aarch64.dmg` | ✓（tauri-action） |
 | desktop (win) | windows-latest | `Polyphony_<ver>_x64-setup.exe`（nsis） | ✓ |
-| desktop (linux) | ubuntu | `*.AppImage` + `*.deb` | ✓ |
+| desktop (linux) | ubuntu | `Polyphony_<ver>_amd64.deb`（仅 deb） | ✓ |
 | android | ubuntu | `app-universal-debug.apk`（arm64-v8a） | ✓ |
 
 矩阵决策（用户拍板，勿回退）：
 
 - **不出 Intel mac dmg**（只 Apple Silicon）。
+- **Linux 只出 deb，不出 AppImage**（2026-11-04 用户拍板）。
 - **Android 只兼容最新设备**：`--target aarch64` 单 apk，不拆 abi、不出 aab，v1 用 debug 签名可直接装机。
 - 桌面无签名证书：dmg 右键打开可装，exe SmartScreen 警告，README 已注明。
 
@@ -39,7 +40,7 @@
 4. **Rust 桌面 API 是 desktop-only**：`#[cfg(desktop)]` 门控托盘/菜单，否则 android 目标编译失败。
 5. **Android runner**：预装 SDK/许可，`setup-android@v3` 反而会挂（废弃 tools 包），只用 `setup-java@17` + 手动确保 `NDK_HOME`；`tauri android init` + `android-patch.mjs` 在 CI 内现场生成工程。
 6. **Release 并发**：tauri-action 会自建缺失 Release，与 web/android 的 `gh release create || true` 并发安全；`permissions: contents: write` 必需。
-7. Linux 桌面需 `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf`（托盘/ayatana）。
+7. Linux（仅 deb）需 `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev`（托盘/ayatana；AppImage 时代还需 patchelf，已随 AppImage 移除）。
 8. `Swatinem/rust-cache@v2`（workspaces 指 `client/src-tauri`）+ `dtolnay/rust-toolchain@stable`（mac 项补 `aarch64-apple-darwin` target，android 项补 `aarch64-linux-android`）。
 
 ## 发布流程（实操）

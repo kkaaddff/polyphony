@@ -21,7 +21,7 @@
 |---|---|
 | 版本 | 3.1.0(`client/src-tauri/tauri.conf.json`) |
 | 仓库 | **开发主仓:私有 Gitea**(`origin`,日常 push 触发部署);**发布仓:github.com/kkaaddff/polyphony**(`github` remote,仅 tag/release 时推送,GitHub 操作一律走 `gh`) |
-| 客户端 | Web(Vite `client/dist/`)+ 桌面三平台(mac arm64 dmg / win nsis / linux AppImage+deb)+ Android(arm64-v8a apk,debug 签名) |
+| 客户端 | Web(Vite `client/dist/`)+ 桌面三平台(mac arm64 dmg / win nsis / linux deb)+ Android(arm64-v8a apk,debug 签名) |
 | 服务 | `server/index.js`:express + ws + y-websocket 中继 + multer 图片上传;dev `:3001`,生产 docker all-in-one `:9091`(容器 `polyphony`) |
 | 生产部署 | Gitea CI(自建 runner)→ `docker compose up -d --build` 原地换容器;详见 deploy-and-ops.md |
 | CI | `.gitea/workflows/deploy.yml`(server+Web 自动部署)/ `.github/workflows/build.yml`(端产物 + GitHub Release,推 `v*` tag 或手动) |

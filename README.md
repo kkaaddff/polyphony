@@ -90,7 +90,7 @@ server {
 |---|---|
 | `Polyphony_*_aarch64.dmg` | macOS(Apple Silicon) |
 | `Polyphony_*_x64-setup.exe` | Windows(NSIS) |
-| `Polyphony_*.AppImage` / `*.deb` | Linux |
+| `Polyphony_*_amd64.deb` | Linux(Debian 系) |
 | `app-universal-debug.apk` | Android(arm64) |
 
 > 产物未签名/公证:macOS 首次打开需右键 → 打开;Windows 会弹 SmartScreen;apk 为 debug 签名可直接侧载。
@@ -109,7 +109,7 @@ npm run dev:all         # 前端(Vite :5173) + WS 服务(:3001)
 ## 🏗 架构
 
 ```
- Tauri 桌面 (dmg/nsis/AppImage+deb)   托盘最近房间 · IndexedDB 离线缓存
+ Tauri 桌面 (dmg/nsis/deb)           托盘最近房间 · IndexedDB 离线缓存
  Tauri Android (arm64 apk)           扫码进房 · ws://IP:PORT 直连
  Web (Vite SPA)                      默认同源,?server= 可覆盖
         │  同一套 client/src(platform/ 收敛平台差异)
