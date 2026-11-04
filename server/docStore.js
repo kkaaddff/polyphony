@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { getDb, withTx, dataDir } from './db.js';
 import { uploadsDir } from './resetV3.js';
+import { applyRefs, sweepAttachments } from './attachments.js';
 
 const DEBOUNCE_MS = 2_000;
 const MAX_DIRTY_MS = 10_000;
@@ -108,6 +109,8 @@ export function purgeDoc(code, now = Date.now()) {
   const removed = withTx(() => {
     const db = getDb();
     const attachments = db.prepare('SELECT key FROM attachments WHERE doc_code = ?').all(docCode);
+    // 他文档指向本档附件的悬空引用一并清(purge 无条件删附件,L9)
+    db.prepare('DELETE FROM doc_refs WHERE attachment_key IN (SELECT key FROM attachments WHERE doc_code = ?)').run(docCode);
     db.prepare('DELETE FROM memberships WHERE doc_code = ?').run(docCode);
     db.prepare('DELETE FROM doc_refs WHERE doc_code = ?').run(docCode);
     db.prepare('DELETE FROM attachments WHERE doc_code = ?').run(docCode);
@@ -165,7 +168,10 @@ export function sweepDocs(now = Date.now()) {
     console.log(`[auth] account-purge ${acc.name} docs=${docs.length}`);
   }
 
-  return { inactive, purged, accounts: dueAccounts.length };
+  // 附件:无引用满 30 天回收 + 孤儿目录兜底
+  const att = sweepAttachments(now);
+
+  return { inactive, purged, accounts: dueAccounts.length, ...att };
 }
 
 /** 回收站列表(所有者视角)。 */
@@ -186,7 +192,11 @@ function writeSnapshot(code, ydoc, now = Date.now()) {
   if (slot && !slot.writable) return; // 停写后一律空操作(L19)
   const state = Y.encodeStateAsUpdate(ydoc);
   const roomName = String(ydoc.getMap('meta').get('roomName') ?? '').slice(0, 40);
-  getDb().prepare('UPDATE docs SET state = ?, name = ? WHERE code = ?').run(state, roomName, code);
+  // 快照与引用 diff 同一事务;refs 无变化时 applyRefs 不写任何行(L20)
+  withTx(() => {
+    getDb().prepare('UPDATE docs SET state = ?, name = ? WHERE code = ?').run(state, roomName, code);
+    applyRefs(code, ydoc.getText('document').toString(), now);
+  });
   if (slot) {
     slot.dirty = false;
     slot.lastWrite = now;

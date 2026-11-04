@@ -318,6 +318,31 @@ if (!states.some((s) => s.user?.name === "A")) fail("awareness 不可见");
   await wait(1200);
   if (d3.getText("document").toString() !== "生命周期冒烟") fail("恢复后内容应仍在(持久化)");
 
+  // 附件:上传→登记→读取→文档删除后 404;旧 /upload 404
+  {
+    const { code: acode } = await postJson("/docs", {}, true).then((r) => r.json());
+    const form = new FormData();
+    form.append("image", new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }), "t.png");
+    const up = await fetch(`${BASE}/docs/${acode}/attachments`, {
+      method: "POST",
+      headers: authed,
+      body: form,
+    });
+    if (up.status !== 201) fail(`上传应 201,得 ${up.status} ${await up.text()}`);
+    const { url: aurl } = await up.json();
+    if (!new RegExp(`^/uploads/${acode}/[a-f0-9]{32}\\.png$`).test(aurl)) fail(`附件路径形态不对: ${aurl}`);
+    const got = await fetch(`${BASE}${aurl}`);
+    if (got.status !== 200) fail(`附件读取应 200,得 ${got.status}`);
+    if (got.headers.get("cache-control") !== "private, max-age=86400") fail("附件缓存头不对");
+    // 未带凭据也能读(免登录);文档删除后 404
+    const del2 = await fetch(`${BASE}/docs/${acode}`, { method: "DELETE", headers: authed });
+    if (del2.status !== 204) fail("删除附件宿主文档失败");
+    const gone = await fetch(`${BASE}${aurl}`);
+    if (gone.status !== 404) fail(`删除后附件应 404,得 ${gone.status}`);
+    const legacy = await fetch(`${BASE}/upload`, { method: "POST", headers: authed });
+    if (legacy.status !== 404) fail(`旧 /upload 应已移除(404),得 ${legacy.status}`);
+  }
+
   // /health 收敛:不列文档码,带数量
   const health = await fetch(`${BASE}/health`).then((r) => r.json());
   if ("rooms" in health) fail("/health 不应再列出文档码");

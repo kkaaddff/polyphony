@@ -11,13 +11,13 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { getDb } from './db.js';
-import { runResetV3, uploadsDir } from './resetV3.js';
+import { runResetV3 } from './resetV3.js';
 import { authenticate } from './auth.js';
 import { startSweeper } from './sweeper.js';
 import { makePersistence, checkDocForConnection, flushAllSync } from './docStore.js';
 import { authRouter } from './routes/auth.js';
 import { pairRouter } from './routes/pair.js';
-import { uploadsRouter } from './routes/uploads.js';
+import { attachmentsRouter } from './routes/attachments.js';
 import { docsRouter } from './routes/docs.js';
 import { listTrash } from './docStore.js';
 
@@ -104,9 +104,8 @@ app.use(
   })
 );
 
-// v3 形态的静态托管与上传(L3 替换为按文档归属的附件路由)
-app.use('/uploads', express.static(uploadsDir()));
-app.use('/', uploadsRouter());
+// 附件:上传按文档归属登记;读取免登录但校验文档状态(L10)
+app.use('/', attachmentsRouter());
 
 // L18:只回数量,绝不列出文档码(在线房间页签已删)
 app.get('/health', (_req, res) => {
@@ -123,6 +122,13 @@ app.get('/health', (_req, res) => {
     totalRooms: rooms.length,
     totalUsers: rooms.reduce((sum, room) => sum + room.clients.size, 0),
     docs: docsCount,
+    uploadsBytes: (() => {
+      try {
+        return getDb().prepare('SELECT COALESCE(SUM(size),0) AS n FROM attachments').get().n;
+      } catch {
+        return 0;
+      }
+    })(),
   });
 });
 
