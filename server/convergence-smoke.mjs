@@ -1,6 +1,7 @@
-// 收敛冒烟：双客户端交错写 → 断言内容一致 + 计数完整；删除轮 + meta + awareness。
+// 收敛冒烟：双客户端交错写 → 断言内容一致 + 计数完整；删除轮 + meta + awareness + v4 凭据往返。
 // 用法：起服后 `node convergence-smoke.mjs [httpBase]`（默认 http://localhost:8101）。
-// WS 已强制 token 鉴权：先建临时账号（无 Origin 的工具客户端可创建），再带 token 连接。
+// v4 凭据：本地生成 secret → /auth/create → 拼 poly_d_ 凭据(响应不含 secret)。
+import crypto from "crypto";
 import WebSocket from "ws";
 globalThis.WebSocket = WebSocket;
 import { Doc } from "yjs";
@@ -10,16 +11,26 @@ const BASE = (process.argv[2] || "http://localhost:8101").replace(/\/+$/, "");
 const SERVER = BASE.replace(/^http/, "ws");
 const ROOM = "SMOKE" + Math.floor(Math.random() * 100000);
 
+const secret = crypto.randomBytes(24).toString("hex");
 const res = await fetch(`${BASE}/auth/create`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ name: `smoke-${Date.now()}` }),
+  body: JSON.stringify({
+    name: `smoke-${Date.now()}`,
+    secret,
+    platform: { client: "web", os: "macos" },
+  }),
 });
 if (!res.ok) {
   console.error("FAIL: 创建冒烟账号失败", res.status, await res.text());
   process.exit(1);
 }
-const { token } = await res.json();
+const { deviceId, recoveryKey } = await res.json();
+if (!deviceId || !recoveryKey.startsWith("poly_r_")) {
+  console.error("FAIL: create 应返回 deviceId 与恢复密钥");
+  process.exit(1);
+}
+const token = `poly_d_${deviceId}_${secret}`;
 const authParams = { token };
 
 const docA = new Doc();
@@ -84,54 +95,45 @@ await wait(800);
 const states = [...pB.awareness.getStates().values()];
 if (!states.some((s) => s.user?.name === "A")) fail("awareness 不可见");
 
-// ---------- 配对登录往返(docs/pairing-login.md §7) ----------
+// ---------- v4 凭据往返(设计 §7:响应不含 secret;恢复密钥可兑换;错钥 401) ----------
 {
-  const json = (r) => r.json();
-  const post = (path, body, authed) =>
+  const post = (path, body) =>
     fetch(`${BASE}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(authed ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
-  // QR 配对:create→info(pending)→claim→双claim 409→confirm→poll 取 token 过 /auth/me
-  const { code } = await post("/auth/pair/create", { kind: "qr" }, true).then(json);
-  const info = await fetch(`${BASE}/auth/pair/info?code=${code}`).then(json);
-  if (info.status !== "pending" || !info.accountName) fail("pair info 应为 pending 且带账号名");
+  const me = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!me.ok) fail("设备凭据未过 /auth/me");
 
-  const { claimKey } = await post("/auth/pair/claim", { code }).then(json);
-  const claimAgain = await post("/auth/pair/claim", { code });
-  if (claimAgain.status !== 409) fail(`双 claim 应 409,得 ${claimAgain.status}`);
-
-  // 非持钥 poll 拿不到 token(D4)
-  const pollStranger = await post("/auth/pair/poll", { code, key: "wrong" });
-  if (pollStranger.status !== 410) fail(`无钥 poll 应 410,得 ${pollStranger.status}`);
-
-  const confirmed = await post("/auth/pair/confirm", { code, accept: true, token }, true);
-  if (!confirmed.ok) fail(`confirm 失败 ${confirmed.status}`);
-  const poll = await post("/auth/pair/poll", { code, key: claimKey }).then(json);
-  if (poll.status !== "approved" || poll.token !== token) fail("poll 未取到 token");
-  const me = await fetch(`${BASE}/auth/me`, {
-    headers: { Authorization: `Bearer ${poll.token}` },
+  const secret2 = crypto.randomBytes(24).toString("hex");
+  const exchanged = await post("/auth/exchange", {
+    key: recoveryKey,
+    secret: secret2,
+    platform: { client: "web", os: "macos" },
   });
-  if (!me.ok) fail("配对取得的 token 未过 /auth/me");
+  if (!exchanged.ok) fail(`恢复密钥兑换失败 ${exchanged.status}`);
+  const { deviceId: d2 } = await exchanged.json();
+  const me2 = await fetch(`${BASE}/auth/me`, {
+    headers: { Authorization: `Bearer poly_d_${d2}_${secret2}` },
+  });
+  if (!me2.ok) fail("兑换所得设备凭据未过 /auth/me");
 
-  // 撤销:链接配对 claim 后 cancel → poll 得 cancelled;未知码 410
-  const { code: code2 } = await post("/auth/pair/create", { kind: "link", ttlMinutes: 5 }, true).then(json);
-  const { claimKey: key2 } = await post("/auth/pair/claim", { code: code2 }).then(json);
-  const cancelled = await post("/auth/pair/cancel", { code: code2 }, true);
-  if (!cancelled.ok) fail(`cancel 失败 ${cancelled.status}`);
-  const poll2 = await post("/auth/pair/poll", { code: code2, key: key2 }).then(json);
-  if (poll2.status !== "cancelled") fail(`cancel 后 poll 应 cancelled,得 ${poll2.status}`);
+  const bad = await post("/auth/exchange", {
+    key: "poly_r_" + "0".repeat(48),
+    secret: crypto.randomBytes(24).toString("hex"),
+  });
+  if (bad.status !== 401) fail(`错误恢复密钥应 401,得 ${bad.status}`);
 
-  const unknown = await post("/auth/pair/claim", { code: "no-such-code" });
-  if (unknown.status !== 410) fail(`未知码应 410,得 ${unknown.status}`);
+  // 恢复密钥不可直接作会话
+  const asSession = await fetch(`${BASE}/auth/me`, {
+    headers: { Authorization: `Bearer ${recoveryKey}` },
+  });
+  if (asSession.status !== 401) fail("恢复密钥直接作会话应 401");
 }
 
 console.log(
-  `PASS 收敛冒烟：${a.length} 字符，标记 ${opens} 对，删除后 ${textA.toString().length} 字符，meta/awareness OK，配对往返 OK`
+  `PASS 收敛冒烟：${a.length} 字符，标记 ${opens} 对，删除后 ${textA.toString().length} 字符，meta/awareness OK，v4 凭据往返 OK`
 );
 process.exit(0);

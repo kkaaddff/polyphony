@@ -1,0 +1,66 @@
+// 房间簿(v4 最小实现:mappings 表)。L1/L2 落地 docStore 后由其接管并最终化
+// (文档状态门控、/rooms 附 status/isOwner 等),此处先保证 v4 分支服务可用。
+import { getDb } from './db.js';
+
+const MEMBER_CAP = 50; // 所有者行不计入、永不被挤掉(L23)
+
+function err(code, message) {
+  const e = new Error(message);
+  e.code = code;
+  return e;
+}
+
+function normalizeCode(code) {
+  return String(code ?? '').trim().toUpperCase().slice(0, 16);
+}
+
+/** 我的房间:memberships ⨝ docs。 */
+export function listRooms(accountId) {
+  return getDb()
+    .prepare(
+      `SELECT m.doc_code AS code, m.role, m.last_used AS lastUsed, d.name, d.status
+         FROM memberships m JOIN docs d ON d.code = m.doc_code
+        WHERE m.account_id = ?
+        ORDER BY m.last_used DESC`
+    )
+    .all(accountId);
+}
+
+/** 进入登记(upsert;已是 owner 只刷新 last_used,role 不被覆盖)。 */
+export function enterRoom(accountId, rawCode, now = Date.now()) {
+  const code = normalizeCode(rawCode);
+  const db = getDb();
+  const doc = code
+    ? db.prepare("SELECT code FROM docs WHERE code = ? AND status = 'active'").get(code)
+    : null;
+  if (!doc) throw err('E_DOC_MISSING', '文档不存在');
+
+  db.prepare(
+    `INSERT INTO memberships (account_id, doc_code, role, last_used) VALUES (?, ?, 'member', ?)
+     ON CONFLICT(account_id, doc_code) DO UPDATE SET last_used = excluded.last_used`
+  ).run(accountId, code, now);
+
+  // member 容量:超出删最旧 member(owner 行豁免)
+  const stale = db
+    .prepare(
+      `SELECT doc_code FROM memberships WHERE account_id = ? AND role = 'member' AND doc_code != ?
+        ORDER BY last_used DESC LIMIT -1 OFFSET ?`
+    )
+    .all(accountId, code, MEMBER_CAP - 1);
+  for (const row of stale) {
+    db.prepare("DELETE FROM memberships WHERE account_id = ? AND doc_code = ? AND role = 'member'").run(
+      accountId,
+      row.doc_code
+    );
+  }
+}
+
+/** 批量退出:只删 member 行(owner 行不可经 leave 删除,所有者用删除文档)。 */
+export function leaveRooms(accountId, rawCodes) {
+  const codes = (Array.isArray(rawCodes) ? rawCodes : []).map(normalizeCode).filter(Boolean);
+  for (const code of codes) {
+    getDb()
+      .prepare("DELETE FROM memberships WHERE account_id = ? AND doc_code = ? AND role = 'member'")
+      .run(accountId, code);
+  }
+}

@@ -16,7 +16,7 @@
     "dev": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
     "lint": "npm --prefix client run lint",
-    "server": "node server/index.js",
+    "server": "node --disable-warning=ExperimentalWarning server/index.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\""
   },
   "devDependencies": {

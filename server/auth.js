@@ -1,128 +1,270 @@
-// 账号与 token 存储:server/data/accounts.json(原子写,建议挂卷持久化)。
-// 安全模型:token 明文仅在创建响应中出现一次;服务端只存 sha256(salt+token)。
-// 房间簿:每账号 rooms[]({code,name,lastUsed}),进入自动登记、退出(单个/批量)解除。
+// 账号与设备凭据(v4):SQLite 存储。契约见 docs/identity-and-sharing.md §4.1–4.4、§4.7。
+// 核心:设备凭据秘密由设备本地生成,服务端只存 sha256、从不下发;
+// 全系统服务端生成并下发的秘密只有恢复密钥(仅注册/重生成时出现一次)。
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { getDb, withTx } from './db.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
+export const DEVICE_LIMIT = 20;
+const NAME_MAX = 20;
+const ACCOUNT_DELETE_GRACE_MS = 30 * 24 * 3600 * 1000; // 注销撤销窗口,与文档回收站同节奏
+const SECRET_RE = /^[0-9a-f]{48}$/;
+const DEVICE_TOKEN_RE = /^poly_d_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_([0-9a-f]{48})$/;
 
-const MAX_ROOMS_PER_ACCOUNT = 50;
-const NAME_MAX_LEN = 20;
+function err(code, message, extra = {}) {
+  const e = new Error(message);
+  e.code = code;
+  Object.assign(e, extra);
+  return e;
+}
 
-// ---------- 持久化(单进程低频写,原子替换足够;量大再迁 SQLite) ----------
+export function sha256hex(s) {
+  return crypto.createHash('sha256').update(s).digest('hex');
+}
 
-let accounts = null;
+// ---------- 平台枚举与服务端拼名(V15:不接受客户端自由文本) ----------
 
-function load() {
-  if (accounts) return accounts;
-  try {
-    accounts = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
-    if (!Array.isArray(accounts)) throw new Error('bad shape');
-  } catch {
-    accounts = []; // 首启/损坏回落空(挂卷即持久,不重建即丢——部署必挂卷)
+const CLIENTS = ['app', 'web'];
+const OSES = ['android', 'ios', 'macos', 'windows', 'linux', 'other'];
+const OS_LABEL = { android: 'Android', ios: 'iOS', macos: 'macOS', windows: 'Windows', linux: 'Linux', other: 'Other' };
+
+function osFromUa(ua) {
+  if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad/i.test(ua)) return 'ios';
+  if (/Mac OS X/i.test(ua)) return 'macos';
+  if (/Windows/i.test(ua)) return 'windows';
+  if (/Linux/i.test(ua)) return 'linux';
+  return 'other';
+}
+
+function browserFromUa(ua) {
+  if (/Edg\//.test(ua)) return 'Edge';
+  if (/Chrome\//.test(ua)) return 'Chrome';
+  if (/Firefox\//.test(ua)) return 'Firefox';
+  if (/Safari\//.test(ua)) return 'Safari';
+  return '浏览器';
+}
+
+function normalizePlatform(raw, ua) {
+  const p = raw && typeof raw === 'object' ? raw : {};
+  const client = CLIENTS.includes(p.client) ? p.client : 'web';
+  let os = OSES.includes(p.os) ? p.os : 'other';
+  if (os === 'other') os = osFromUa(ua); // 客户端没报准时按 UA 兜底,仍落在枚举内
+  return { client, os };
+}
+
+function labelFor(platform, ua) {
+  return platform.client === 'app'
+    ? `App · ${OS_LABEL[platform.os]}`
+    : `${browserFromUa(ua)} · ${OS_LABEL[platform.os]}`;
+}
+
+// ---------- 凭据 ----------
+
+function assertSecret(secret) {
+  if (typeof secret !== 'string' || !SECRET_RE.test(secret)) {
+    throw err('E_SECRET_INVALID', '设备秘密格式无效');
   }
-  return accounts;
 }
 
-function persist() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const tmp = ACCOUNTS_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(accounts, null, 2));
-  fs.renameSync(tmp, ACCOUNTS_FILE);
+/** 解析 `poly_d_<uuid>_<secret>`;其余格式(含恢复密钥)一律 null。 */
+export function parseCredential(token) {
+  if (typeof token !== 'string') return null;
+  const m = token.match(DEVICE_TOKEN_RE);
+  return m ? { deviceId: m[1], secret: m[2] } : null;
 }
 
-// ---------- token ----------
-
-function hashToken(salt, token) {
-  return crypto.createHash('sha256').update(salt + token).digest('hex');
+function insertDevice(accountId, secret, rawPlatform, ua, now) {
+  const platform = normalizePlatform(rawPlatform, ua);
+  const deviceId = crypto.randomUUID();
+  getDb()
+    .prepare(
+      'INSERT INTO devices (id, account_id, hash, client, os, label, created_at) VALUES (?,?,?,?,?,?,?)'
+    )
+    .run(deviceId, accountId, sha256hex(secret), platform.client, platform.os, labelFor(platform, ua), now);
+  return deviceId;
 }
 
-function safeEqualHex(a, b) {
-  const ba = Buffer.from(a, 'hex');
-  const bb = Buffer.from(b, 'hex');
-  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+function deviceCount(accountId) {
+  return getDb().prepare('SELECT COUNT(*) AS n FROM devices WHERE account_id = ?').get(accountId).n;
 }
 
-/** 创建账号:名字唯一;返回含明文 token(仅此一次)。 */
-export function createAccount(rawName) {
+// ---------- 账号 ----------
+
+/** 创建账号(全端):本地已生成 secret,服务端登记哈希 + 生成一次性恢复密钥。 */
+export function createAccount({ name: rawName, secret, platform, ua }, now = Date.now()) {
   const name = String(rawName ?? '').trim();
-  if (!name || name.length > NAME_MAX_LEN) {
-    const err = new Error('用户名需为 1-20 个字符');
-    err.code = 'E_NAME_INVALID';
-    throw err;
+  if (!name || name.length > NAME_MAX) {
+    throw err('E_NAME_INVALID', '用户名需为 1-20 个字符');
   }
-  const list = load();
-  if (list.some((a) => a.name === name)) {
-    const err = new Error('用户名已被占用');
-    err.code = 'ERR_NAME_TAKEN';
-    throw err;
+  assertSecret(secret);
+  const recoveryKey = 'poly_r_' + crypto.randomBytes(24).toString('hex');
+  const accountId = crypto.randomUUID();
+  return withTx(() => {
+    // 注销中的账号仍占用用户名(V24),彻底删除后才释放 —— UNIQUE 约束兜底
+    if (getDb().prepare('SELECT 1 FROM accounts WHERE name = ?').get(name)) {
+      throw err('E_NAME_TAKEN', '用户名已被占用');
+    }
+    getDb()
+      .prepare('INSERT INTO accounts (id, name, recovery_hash, created_at) VALUES (?,?,?,?)')
+      .run(accountId, name, sha256hex(recoveryKey), now);
+    const deviceId = insertDevice(accountId, secret, platform, ua, now);
+    return { name, deviceId, recoveryKey };
+  });
+}
+
+// last_seen_at 写库节流:距库中值 ≥1h 才 UPDATE,避免每请求写库
+/** 鉴权:设备凭据 → { account, device };任何不匹配返回 null。 */
+export function authenticate(token, now = Date.now()) {
+  const parsed = parseCredential(token);
+  if (!parsed) return null;
+  const row = getDb()
+    .prepare(
+      `SELECT d.id AS device_id, d.hash, d.label, d.client, d.os, d.created_at, d.last_seen_at,
+              a.id AS account_id, a.name, a.deleted_at
+         FROM devices d JOIN accounts a ON a.id = d.account_id
+        WHERE d.id = ?`
+    )
+    .get(parsed.deviceId);
+  if (!row || row.hash !== sha256hex(parsed.secret) || row.deleted_at) return null;
+
+  if (row.last_seen_at === null || now - row.last_seen_at >= 3600_000) {
+    getDb().prepare('UPDATE devices SET last_seen_at = ? WHERE id = ?').run(now, row.device_id);
+    row.last_seen_at = now;
   }
-  const token = 'poly_' + crypto.randomBytes(24).toString('hex');
-  const salt = crypto.randomBytes(16).toString('hex');
-  const account = {
-    id: crypto.randomUUID(),
-    name,
-    salt,
-    tokenHash: hashToken(salt, token),
-    createdAt: new Date().toISOString(),
-    rooms: [],
+  return {
+    account: { id: row.account_id, name: row.name },
+    device: {
+      id: row.device_id,
+      label: row.label,
+      client: row.client,
+      os: row.os,
+      createdAt: row.created_at,
+      lastSeenAt: row.last_seen_at,
+    },
   };
-  list.push(account);
-  persist();
-  return { id: account.id, name: account.name, token };
 }
 
-/** 校验 Bearer token → 账号(或 null)。 */
-export function verifyToken(token) {
-  if (typeof token !== 'string' || !token.startsWith('poly_')) return null;
-  const list = load();
-  for (const a of list) {
-    if (safeEqualHex(hashToken(a.salt, token), a.tokenHash)) return a;
+/** 恢复密钥兑换本机设备凭据。 */
+export function exchange({ key, secret, platform, ua }, now = Date.now()) {
+  assertSecret(secret);
+  if (typeof key !== 'string' || !/^poly_r_[0-9a-f]{48}$/.test(key)) {
+    throw err('E_UNAUTHORIZED', '恢复密钥无效');
   }
-  return null;
+  const account = getDb()
+    .prepare('SELECT id, name, deleted_at FROM accounts WHERE recovery_hash = ?')
+    .get(sha256hex(key));
+  if (!account) throw err('E_UNAUTHORIZED', '恢复密钥无效');
+  if (account.deleted_at) {
+    throw err('E_ACCOUNT_DELETED', '该账号正在注销', {
+      purgeAt: account.deleted_at + ACCOUNT_DELETE_GRACE_MS,
+    });
+  }
+  if (deviceCount(account.id) >= DEVICE_LIMIT) {
+    throw err('E_DEVICE_LIMIT', '设备数量已达上限,请先吊销不用的设备');
+  }
+  const deviceId = insertDevice(account.id, secret, platform, ua, now);
+  return { name: account.name, deviceId };
 }
 
-// ---------- 房间簿 ----------
-
-function normalizeCode(code) {
-  return String(code ?? '').trim().toUpperCase().slice(0, 16);
+export function listDevices(accountId, currentDeviceId) {
+  const rows = getDb()
+    .prepare('SELECT id, label, created_at, last_seen_at FROM devices WHERE account_id = ? ORDER BY created_at')
+    .all(accountId);
+  return rows.map((r) => ({
+    id: r.id,
+    label: r.label,
+    createdAt: r.created_at,
+    lastSeenAt: r.last_seen_at,
+    current: r.id === currentDeviceId,
+  }));
 }
 
-/** 进入/改名登记(upsert;容量上限内淘汰最旧)。 */
-export function enterRoom(accountId, rawCode, rawName) {
-  const code = normalizeCode(rawCode);
-  if (!code) return [];
-  const list = load();
-  const acc = list.find((a) => a.id === accountId);
-  if (!acc) return acc?.rooms ?? [];
-  const name = String(rawName ?? '').trim().slice(0, 40);
-  const rest = acc.rooms.filter((r) => r.code !== code);
-  const prev = acc.rooms.find((r) => r.code === code);
-  rest.unshift({ code, name: name || prev?.name || '', lastUsed: Date.now() });
-  acc.rooms = rest.slice(0, MAX_ROOMS_PER_ACCOUNT);
-  persist();
-  return acc.rooms;
+/** 吊销设备;返回 { accountId } 供路由关闭其 WS。 */
+export function revokeDevice(deviceId) {
+  const row = getDb().prepare('SELECT account_id FROM devices WHERE id = ?').get(deviceId);
+  if (!row) return null;
+  getDb().prepare('DELETE FROM devices WHERE id = ?').run(deviceId);
+  return { accountId: row.account_id };
 }
 
-/** 批量退出(解除关联;房间内容不受影响,凭码仍可再进)。 */
-export function leaveRooms(accountId, rawCodes) {
-  const codes = new Set(
-    (Array.isArray(rawCodes) ? rawCodes : []).map(normalizeCode).filter(Boolean)
-  );
-  const list = load();
-  const acc = list.find((a) => a.id === accountId);
-  if (!acc) return [];
-  acc.rooms = acc.rooms.filter((r) => !codes.has(r.code));
-  persist();
-  return acc.rooms;
+export function regenerateRecovery(accountId) {
+  const recoveryKey = 'poly_r_' + crypto.randomBytes(24).toString('hex');
+  getDb().prepare('UPDATE accounts SET recovery_hash = ? WHERE id = ?').run(sha256hex(recoveryKey), accountId);
+  return recoveryKey;
 }
 
-/** 我的房间(按 lastUsed 倒序)。 */
-export function getRooms(accountId) {
-  const acc = load().find((a) => a.id === accountId);
-  return [...(acc?.rooms ?? [])].sort((a, b) => (b.lastUsed ?? 0) - (a.lastUsed ?? 0));
+// ---------- 注销账号(§4.7) ----------
+
+/**
+ * 注销:单事务内标记 deleted_at、删除全部设备、自有 active 文档进回收站。
+ * 返回 { deviceIds, docCodes } 供路由立即关闭对应 WS。
+ */
+export function deleteAccount({ accountId, name: rawName, now = Date.now() }) {
+  const name = String(rawName ?? '').trim();
+  return withTx(() => {
+    const account = getDb().prepare('SELECT name, deleted_at FROM accounts WHERE id = ?').get(accountId);
+    if (!account) throw err('E_NOT_FOUND', '账号不存在');
+    if (account.name !== name) throw err('E_NAME_MISMATCH', '输入的用户名与账号不一致');
+    if (account.deleted_at) throw err('E_ACCOUNT_STATE', '账号已在注销中');
+
+    const docCodes = getDb()
+      .prepare("SELECT code FROM docs WHERE owner_id = ? AND status = 'active'")
+      .all(accountId)
+      .map((r) => r.code);
+    const deviceIds = getDb()
+      .prepare('SELECT id FROM devices WHERE account_id = ?')
+      .all(accountId)
+      .map((r) => r.id);
+
+    getDb().prepare('UPDATE accounts SET deleted_at = ? WHERE id = ?').run(now, accountId);
+    if (docCodes.length > 0) {
+      getDb()
+        .prepare(
+          "UPDATE docs SET status = 'trashed', trash_reason = 'account_deleted', trashed_at = ? WHERE owner_id = ? AND status = 'active'"
+        )
+        .run(now, accountId);
+    }
+    getDb().prepare('DELETE FROM devices WHERE account_id = ?').run(accountId);
+    return { deviceIds, docCodes };
+  });
+}
+
+/** 撤销注销(恢复密钥):账号恢复 + account_deleted 文档恢复 active + 登记新设备。 */
+export function restoreAccount({ key, secret, platform, ua }, now = Date.now()) {
+  assertSecret(secret);
+  if (typeof key !== 'string' || !/^poly_r_[0-9a-f]{48}$/.test(key)) {
+    throw err('E_UNAUTHORIZED', '恢复密钥无效');
+  }
+  const account = getDb()
+    .prepare('SELECT id, name, deleted_at FROM accounts WHERE recovery_hash = ?')
+    .get(sha256hex(key));
+  if (!account) throw err('E_UNAUTHORIZED', '恢复密钥无效');
+  if (!account.deleted_at) throw err('E_ACCOUNT_ACTIVE', '该账号不在注销中');
+
+  return withTx(() => {
+    getDb().prepare('UPDATE accounts SET deleted_at = NULL WHERE id = ?').run(account.id);
+    getDb()
+      .prepare(
+        "UPDATE docs SET status = 'active', trash_reason = NULL, trashed_at = NULL WHERE owner_id = ? AND status = 'trashed' AND trash_reason = 'account_deleted'"
+      )
+      .run(account.id);
+    const deviceId = insertDevice(account.id, secret, platform, ua, now);
+    return { name: account.name, deviceId };
+  });
+}
+
+// ---------- 清扫(sweeper.js 每小时调度;账号 30 天到期清除随 L1 的文档 purge 一起接入) ----------
+
+const ORPHAN_MS = 24 * 3600 * 1000; // 批准后从未上线的设备
+const INACTIVE_MS = 180 * 24 * 3600 * 1000; // 长期不活动自动吊销(V20)
+
+export function sweepDevices(now = Date.now()) {
+  const db = getDb();
+  const orphan = db
+    .prepare('DELETE FROM devices WHERE last_seen_at IS NULL AND created_at < ?')
+    .run(now - ORPHAN_MS).changes;
+  const inactive = db
+    .prepare('DELETE FROM devices WHERE last_seen_at IS NOT NULL AND last_seen_at < ?')
+    .run(now - INACTIVE_MS).changes;
+  return { orphan, inactive };
 }

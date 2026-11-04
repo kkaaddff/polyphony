@@ -41,7 +41,9 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 COPY --from=serverdeps /build/server/node_modules ./server/node_modules
-COPY server/index.js server/auth.js server/convergence-smoke.mjs ./server/
+COPY server/index.js server/auth.js server/rooms.js server/db.js server/resetV3.js \
+     server/sweeper.js server/convergence-smoke.mjs ./server/
+COPY server/routes ./server/routes
 COPY --from=webbuild /build/dist ./public
 
 # 上传目录与账号数据（运行时挂卷持久化；accounts.json 原子写）；非 root 运行
@@ -54,4 +56,4 @@ EXPOSE 9091
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -qO- http://127.0.0.1:9091/health >/dev/null || exit 1
 
-CMD ["node", "server/index.js"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "server/index.js"]
