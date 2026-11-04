@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#1e1b4b"/>
+    </linearGradient>
+  </defs>
+  <!-- 桌面/ico/ios 用:全出血 squircle(透明圆角) -->
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M -80 512 C 48 254 176 254 304 512 C 432 770 560 770 688 512 C 816 254 944 254 1090 512"
+          stroke="#1e1b4b" stroke-opacity="0.85" stroke-width="150"/>
+    <path d="M -80 512 C 48 254 176 254 304 512 C 432 770 560 770 688 512 C 816 254 944 254 1090 512"
+          stroke="#f8fafc" stroke-width="98"/>
+    <path d="M -80 770 C 48 770 176 512 304 512 C 432 512 560 254 688 254 C 816 254 944 512 1090 512"
+          stroke="#1e1b4b" stroke-opacity="0.85" stroke-width="150"/>
+    <path d="M -80 770 C 48 770 176 512 304 512 C 432 512 560 254 688 254 C 816 254 944 512 1090 512"
+          stroke="#7dd3fc" stroke-width="98"/>
+    <path d="M -80 254 C 48 254 176 512 304 512 C 432 512 560 770 688 770 C 816 770 944 512 1090 512"
+          stroke="#1e1b4b" stroke-opacity="0.85" stroke-width="150"/>
+    <path d="M -80 254 C 48 254 176 512 304 512 C 432 512 560 770 688 770 C 816 770 944 512 1090 512"
+          stroke="#f8fafc" stroke-width="98"/>
+  </g>
+</svg>

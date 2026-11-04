@@ -36,6 +36,7 @@
 | 30 | UI 精简（v3.5.0，验收评审驱动）：品牌去中文（仅 UI 串/窗口/托盘）、首页设置收敛进头像菜单、编辑器顶栏收敛为「👥 n ▾」菜单 + 房间号点击复制（toast）、工具栏双行换行、在线用户底部面板、IME `interactive-widget=resizes-content` | localStorage 键/`polyphony:open-users` 事件名/仓库名不动（迁移成本）；软键盘走 Web 标准方案，manifest `adjustResize` 仅兜底且必须打在 `<activity>` 上（写 `<application>` 静默失效）；toast 手写不引依赖，`pointer-events-none` 不挡 e2e 点击 |
 | 31 | App 壳去 web 化交互（v3.6.0）：双指/双击缩放**全端禁**（index.html 静态 meta 直接带 `maximum-scale=1 + user-scalable=no`，用户拍板「与 App 交互一致」优先于缩放无障碍；输入框聚焦自动放大随之消失）；全局 `overscroll-behavior:none` 禁下拉刷新与边缘发光、`-webkit-tap-highlight-color:transparent` 去点击灰闪、`touch-action:manipulation` 去双击延迟、`user-select:none` 禁 UI 铬件长按选中（`input/textarea/[contenteditable]` 重新放开，token 展示页 `select-all` 特异性更高不受影响） | WebView 把整套浏览器行为带进 App：双指缩放、误触下拉刷新重载打断协同编辑、按钮灰闪、长按 UI 出选择浮层——原生 App 均无此交互。曾考虑「仅 App 壳禁、Web 留缩放」的运行时分流，用户选择一致化后删繁就简走静态 meta。e2e ui-mobile 加计算样式基线守护 |
 
+| 32 | 品牌图标定稿（v3.6.0）：「三声部辫」——靛蓝渐变（#4f46e5→#1e1b4b）squircle 上三条正弦带（白/天蓝/白）靠深色 halo 描边（150/98）做上下穿插；源 SVG + manifest 入库 `client/src-tauri/icons/source/`，`npx tauri icon` 生成全端套件；favicon 手工合成 48px PNG-in-ICO | 替换借用的 Tauri 默认图标。四稿评审（交织辫/合声圆/对位链/轮指波）选一：辫子直观表达「多声部交叠仍各成一线」；halo 分层是实现编织感的全部技巧（纯描边交叉糊成 X）。Android 自适应层：fg 缩 0.46 压幅 220 保证墨迹全落 66/108 安全区（~305px 半径），bg 满幅渐变，mono 全白给 13+ 主题图标。legacy 合成图经视觉模型复核（居中/边距 20%/满幅）。不出包平台的生成物（iOS AppIcon×16、MS Store Square/StoreLogo×10）与无引用的 64x64 裁出入库范围并 gitignore——`tauri icon` 每次全量再生成，不入库的不该出现在 status 里 |
 ## 坑清单（按"再遇到怎么识别"组织）
 
 ### 构建/依赖

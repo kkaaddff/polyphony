@@ -62,3 +62,8 @@ next-env.d.ts
 # 本机凭据(账号 token,绝不入库)
 /secrets/
 local-artifacts
+# tauri icon 会全量再生成;不出包的平台(iOS/MS Store)不入库,64x64 无引用
+/client/src-tauri/icons/ios/
+/client/src-tauri/icons/Square*Logo.png
+/client/src-tauri/icons/StoreLogo.png
+/client/src-tauri/icons/64x64.png
