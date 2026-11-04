@@ -9,7 +9,8 @@ import { WebsocketProvider } from "y-websocket";
 
 const BASE = (process.argv[2] || "http://localhost:8101").replace(/\/+$/, "");
 const SERVER = BASE.replace(/^http/, "ws");
-const ROOM = "SMOKE" + Math.floor(Math.random() * 100000);
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const secret = crypto.randomBytes(24).toString("hex");
 const res = await fetch(`${BASE}/auth/create`, {
@@ -31,7 +32,24 @@ if (!deviceId || !recoveryKey.startsWith("poly_r_")) {
   process.exit(1);
 }
 const token = `poly_d_${deviceId}_${secret}`;
-const authParams = { token };
+
+const postJson = (path, body, authed = false) =>
+  fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(authed ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+// v4:房间必须显式创建(不再隐式);CRDT 主测试用房
+const roomRes = await postJson("/docs", {}, true);
+if (!roomRes.ok) {
+  console.error("FAIL: 创建冒烟文档失败", roomRes.status, await roomRes.text());
+  process.exit(1);
+}
+const ROOM = (await roomRes.json()).code;
 
 // v4:凭据经子协议头注入(与 useCollaboration 的 WebSocketPolyfill 同构)
 class AuthedWS extends WebSocket {
@@ -46,16 +64,6 @@ const docB = new Doc();
 const pA = new WebsocketProvider(SERVER, ROOM, docA, wsOpts);
 const pB = new WebsocketProvider(SERVER, ROOM, docB, wsOpts);
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const postJson = (path, body, authed = false) =>
-  fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(authed ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
 const meName = async () => {
   const r = await fetch(`${BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
   return (await r.json()).name;
@@ -68,11 +76,14 @@ const fail = (msg) => {
 await new Promise((res) => {
   let n = 0;
   const done = () => {
-    if (++n === 2) res();
+    if (++n === 2) {
+      clearTimeout(timer); // 成功后必须清定时器(总时长超 8s 后曾误杀整轮冒烟)
+      res();
+    }
   };
   pA.on("sync", done);
   pB.on("sync", done);
-  setTimeout(() => fail("初始同步超时"), 8000);
+  const timer = setTimeout(() => fail("初始同步超时"), 8000);
 });
 
 const textA = docA.getText("content");
@@ -191,8 +202,9 @@ if (!states.some((s) => s.user?.name === "A")) fail("awareness 不可见");
       super(url, ["polyphony.v1", `auth.${token3}`]);
     }
   }
+  const { code: revokeRoom } = await postJson("/docs", {}, true).then((r) => r.json());
   const doc3 = new Doc();
-  const p3 = new WebsocketProvider(SERVER, "WSREVOKE", doc3, {
+  const p3 = new WebsocketProvider(SERVER, revokeRoom, doc3, {
     disableBc: true,
     WebSocketPolyfill: Authed3,
   });
@@ -256,7 +268,63 @@ if (!states.some((s) => s.user?.name === "A")) fail("awareness 不可见");
   if (typeof rooms.pendingPairings !== "number") fail("/rooms 应含 pendingPairings");
 }
 
+// ---------- 文档生命周期(§7 L1/L2):显式创建/门控/删除/回收站 ----------
+{
+  const authed = { Authorization: `Bearer ${token}` };
+  const { code } = await postJson("/docs", {}, true).then((r) => r.json());
+  if (!/^[A-Z0-9]{8}$/.test(code)) fail(`文档码格式不对: ${code}`);
+
+  // 未知码 → 4004(不再隐式创建空文档)
+  const unknown = new WebSocket(`${SERVER}/NOSUCH01`, ["polyphony.v1", `auth.${token}`]);
+  const code404 = await new Promise((resolve) => {
+    unknown.on("close", (c) => resolve(c));
+    unknown.on("error", () => resolve(-1));
+    setTimeout(() => resolve(undefined), 5000);
+  });
+  if (code404 !== 4004) fail(`未知文档码应 4004,得 ${code404}`);
+
+  // 进入显式创建的文档并写入(防抖落库);close 监听须在连接建立时挂上
+  const dd = new Doc();
+  const pd = new WebsocketProvider(SERVER, code, dd, wsOpts);
+  await new Promise((res) => {
+    pd.on("status", (e) => { if (e.status === "connected") res(); });
+    setTimeout(res, 5000);
+  });
+  const closeCode = new Promise((resolve) => {
+    pd.ws?.on("close", (c) => resolve(c));
+    setTimeout(() => resolve(undefined), 15000);
+  });
+  dd.getText("document").insert(0, "生命周期冒烟");
+  dd.getMap("meta").set("roomName", "生命周期文档");
+  await wait(2500);
+
+  // 所有者删除 → 在线连接立即 4010
+  const del = await fetch(`${BASE}/docs/${code}`, { method: "DELETE", headers: authed });
+  if (del.status !== 204) fail(`删除应 204,得 ${del.status}`);
+  if ((await closeCode) !== 4010) fail(`删除后在线连接应 4010,得 ${await closeCode}`);
+
+  // 回收站:列表 → 恢复 → 重新可进
+  const trash = await fetch(`${BASE}/docs/trash/list`, { headers: authed }).then((r) => r.json());
+  if (!trash.docs.some((x) => x.code === code)) fail("回收站应含被删文档");
+  const restore = await fetch(`${BASE}/docs/${code}/restore`, { method: "POST", headers: authed });
+  if (restore.status !== 204) fail(`恢复应 204,得 ${restore.status}`);
+  const d3 = new Doc();
+  const p3 = new WebsocketProvider(SERVER, code, d3, wsOpts);
+  const reentered = await new Promise((resolve) => {
+    p3.on("status", (e) => { if (e.status === "connected") resolve(true); });
+    setTimeout(() => resolve(false), 5000);
+  });
+  if (!reentered) fail("恢复后应能重新进入");
+  await wait(1200);
+  if (d3.getText("document").toString() !== "生命周期冒烟") fail("恢复后内容应仍在(持久化)");
+
+  // /health 收敛:不列文档码,带数量
+  const health = await fetch(`${BASE}/health`).then((r) => r.json());
+  if ("rooms" in health) fail("/health 不应再列出文档码");
+  if (typeof health.docs !== "number") fail("/health 应含 docs 数量");
+}
+
 console.log(
-  `PASS 收敛冒烟：${a.length} 字符，标记 ${opens} 对，删除后 ${textA.toString().length} 字符，meta/awareness OK，v4 凭据/WS 鉴权/配对双向往返 OK`
+  `PASS 收敛冒烟：${a.length} 字符，标记 ${opens} 对，删除后 ${textA.toString().length} 字符，meta/awareness OK，v4 凭据/WS 鉴权/配对双向往返/文档生命周期 OK`
 );
 process.exit(0);

@@ -6,7 +6,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import { setupWSConnection } from 'y-websocket/bin/utils';
+import { setupWSConnection, setPersistence } from 'y-websocket/bin/utils';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -14,9 +14,12 @@ import { getDb } from './db.js';
 import { runResetV3, uploadsDir } from './resetV3.js';
 import { authenticate } from './auth.js';
 import { startSweeper } from './sweeper.js';
+import { makePersistence, checkDocForConnection, flushAllSync } from './docStore.js';
 import { authRouter } from './routes/auth.js';
 import { pairRouter } from './routes/pair.js';
 import { uploadsRouter } from './routes/uploads.js';
+import { docsRouter } from './routes/docs.js';
+import { listTrash } from './docStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +27,17 @@ const __dirname = path.dirname(__filename);
 // 归档必须先于任何数据访问(db 惰性打开,这里顺序即保障)
 runResetV3();
 getDb();
+// 文档快照持久化(§4.2):bindState 同步读盘 + 防抖写库 + 断开即卸载
+setPersistence(makePersistence());
+// 容器 stop:刷写脏文档再退(SIGTERM/SIGINT 都接)
+process.on('SIGTERM', () => {
+  try {
+    flushAllSync();
+  } catch (e) {
+    console.error('[docs] flush on exit failed:', e.message);
+  }
+  process.exit(0);
+});
 
 const app = express();
 app.use(cors());
@@ -82,23 +96,33 @@ app.use(
   })
 );
 app.use('/auth/pair', pairRouter({ closeDeviceWs }));
+app.use(
+  '/docs',
+  docsRouter({
+    closeDocWs,
+    listTrash,
+  })
+);
 
 // v3 形态的静态托管与上传(L3 替换为按文档归属的附件路由)
 app.use('/uploads', express.static(uploadsDir()));
 app.use('/', uploadsRouter());
 
+// L18:只回数量,绝不列出文档码(在线房间页签已删)
 app.get('/health', (_req, res) => {
-  const rooms = Array.from(roomStats.entries()).map(([code, data]) => ({
-    code,
-    userCount: data.clients.size,
-    lastActivity: data.lastActivity,
-  }));
+  const rooms = Array.from(roomStats.values());
+  let docsCount = 0;
+  try {
+    docsCount = getDb().prepare("SELECT COUNT(*) AS n FROM docs WHERE status != 'purged'").get().n;
+  } catch {
+    /* db 不可用时健康检查仍应返回 */
+  }
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     totalRooms: rooms.length,
-    totalUsers: rooms.reduce((sum, room) => sum + room.userCount, 0),
-    rooms,
+    totalUsers: rooms.reduce((sum, room) => sum + room.clients.size, 0),
+    docs: docsCount,
   });
 });
 
@@ -150,6 +174,14 @@ wss.on('connection', (ws, req) => {
   }
 
   const roomCode = decodeURIComponent(roomUrl.pathname.slice(1) || 'default');
+
+  // 文档门控(§4.4):不存在/已清除 4004;回收站 4010。此后 bindState 只会见登记过的码
+  const gate = checkDocForConnection(roomCode);
+  if (!gate.allowed) {
+    ws.close(gate.closeCode, gate.reason);
+    return;
+  }
+
   trackWs(ws, session.device.id, roomCode);
 
   let roomData = roomStats.get(roomCode);
