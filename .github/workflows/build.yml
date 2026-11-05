@@ -105,6 +105,11 @@ jobs:
             artifact-path: client/src-tauri/target/release/bundle/deb/*.deb
     runs-on: ${{ matrix.os }}
     if: ${{ vars.DEPLOY_ENV == 'github' }}
+    env:
+      # Apple 签名/公证是否已配置(0/1)。放 job 级:step 的 if 求值先于自身 env 生效,
+      # 只能读 job/workflow 级 env;secrets 不能直接进 if(GitHub 硬限制)。
+      HAS_API_KEY: ${{ secrets.APPLE_API_KEY_B64 != '' && '1' || '0' }}
+      HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -157,7 +162,7 @@ jobs:
       #   APPLE_API_ISSUER           = Issuer ID
       #   APPLE_API_KEY_B64          = AuthKey_<密钥ID>.p8 的 base64
       - name: 准备 Apple 公证密钥
-        if: runner.os == 'macOS' && secrets.APPLE_API_KEY_B64 != ''
+        if: runner.os == 'macOS' && env.HAS_API_KEY == '1'
         env:
           KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
         run: |
@@ -186,22 +191,21 @@ jobs:
 
       # 未签名档兜底:Release 正文自动附 xattr 解封说明(配了证书即消失)
       - name: Release 附 macOS 未公证说明
-        if: runner.os == 'macOS' && env.RELEASE_TAG != '' && secrets.APPLE_CERTIFICATE == ''
+        if: runner.os == 'macOS' && env.RELEASE_TAG != '' && env.HAS_CERT == '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BODY=$(gh release view "$RELEASE_TAG" --json body -q .body)
           case "$BODY" in
             *xattr*) echo "解封说明已存在,跳过" ;;
-            *) NOTE=$(cat <<'EOF'
-          ### macOS 首次打开
-          当前 dmg 为 adhoc 签名（未接 Apple 开发者公证），浏览器下载后 macOS 会误报「已损坏」。在终端执行一次即可解封：
-          ```sh
-          xattr -rd com.apple.quarantine /Applications/Polyphony.app
-          ```
-          EOF
-          )
-            gh release edit "$RELEASE_TAG" --notes "$BODY
+            *) NOTE=$(printf '%s\n' \
+                '### macOS 首次打开' \
+                '' \
+                '当前 dmg 为 adhoc 签名（未接 Apple 开发者公证），浏览器下载后 macOS 会误报「已损坏」。在终端执行一次即可解封：' \
+                '```sh' \
+                'xattr -rd com.apple.quarantine /Applications/Polyphony.app' \
+                '```')
+              gh release edit "$RELEASE_TAG" --notes "$BODY
           $NOTE" ;;
           esac
 
