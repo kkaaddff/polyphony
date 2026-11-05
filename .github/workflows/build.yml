@@ -173,13 +173,15 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 空值时 tauri bundler 自动跳过签名/公证,不影响其余平台
+          # 未配置证书时 APPLE_CERTIFICATE 展开为空串,tauri bundler 仍会尝试 import(实踩:
+          # SecKeychainItemImport "Unable to decode the provided data")——必须显式给
+          # APPLE_SIGNING_IDENTITY="-" 走官方 adhoc 路径(跳过导入与公证),配置后自动切换。
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_SIGNING_IDENTITY: ${{ env.HAS_CERT == '1' && secrets.APPLE_SIGNING_IDENTITY || '-' }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
+          APPLE_API_KEY_PATH: ${{ env.HAS_CERT == '1' && env.APPLE_API_KEY_PATH || '' }}
         with:
           projectPath: client
           args: ${{ matrix.args }}
