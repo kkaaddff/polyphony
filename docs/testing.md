@@ -19,13 +19,14 @@ docStore（码生成/生命周期/快照落盘/清扫）、attachments（登记/
 
 ```bash
 cd server && node --disable-warning=ExperimentalWarning index.js &   # 起服（:3001）
-node --test --disable-warning=ExperimentalWarning convergence-smoke.mjs http://localhost:3001
-# ⚠️ 默认打 :8101，本地必须传参；SMOKE_BASE 环境变量会影响服务端自身行为勿用
+node --disable-warning=ExperimentalWarning convergence-smoke.mjs http://localhost:3001
+# ⚠️ 默认打 :8101；直接 node 跑（--test 会吃掉位置参数）；失败退出码非 0
 ```
 
 内容：v4 全链路——凭据创建/WS 子协议鉴权（无凭据 4001、URL 带 token 4001、吊销即时断开）、
-配对双向、文档生命周期（4004/4010、回收站、恢复、重启持久化演练）、附件上传/读取/回收、
+配对双向、文档生命周期（4004/4010、回收站、恢复）、附件上传/读取/回收、
 导出 zip 与一次性令牌、`/health` 形状；外加双客户端 100 次随机位置交错插入 → 删除轮 → meta + awareness 断言。
+部署 CI（deploy.yml）在容器内以同一脚本自环验证（`docker exec polyphony node server/convergence-smoke.mjs http://127.0.0.1:9091`）。
 **断言纪律**：交错插入会拆散文本标记，必须数括号对，不能 substring 匹配。
 
 ## 2. E2E UI 回归（`e2e/`，Playwright）— 仅本地，绝不进 CI

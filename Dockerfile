@@ -42,7 +42,8 @@ WORKDIR /app
 
 COPY --from=serverdeps /build/server/node_modules ./server/node_modules
 COPY server/index.js server/auth.js server/rooms.js server/db.js server/resetV3.js \
-     server/sweeper.js server/docStore.js server/pairing.js server/convergence-smoke.mjs ./server/
+     server/sweeper.js server/docStore.js server/pairing.js server/attachments.js \
+     server/exporter.js server/convergence-smoke.mjs ./server/
 COPY server/routes ./server/routes
 COPY --from=webbuild /build/dist ./public
 
