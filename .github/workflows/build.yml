@@ -108,7 +108,6 @@ jobs:
     env:
       # Apple 签名/公证是否已配置(0/1)。放 job 级:step 的 if 求值先于自身 env 生效,
       # 只能读 job/workflow 级 env;secrets 不能直接进 if(GitHub 硬限制)。
-      HAS_API_KEY: ${{ secrets.APPLE_API_KEY_B64 != '' && '1' || '0' }}
       HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
@@ -161,27 +160,41 @@ jobs:
       #   APPLE_API_KEY              = App Store Connect API 密钥 ID
       #   APPLE_API_ISSUER           = Issuer ID
       #   APPLE_API_KEY_B64          = AuthKey_<密钥ID>.p8 的 base64
-      - name: 准备 Apple 公证密钥
-        if: runner.os == 'macOS' && env.HAS_API_KEY == '1'
+      # 注入 Apple 签名/公证环境(仅已配置时):必须经 GITHUB_ENV 而不是静态写在
+      # tauri-action 的 env 里——GitHub 对未配置的 secret 展开为空串,而 tauri bundler
+      # 只要 APPLE_CERTIFICATE 这个 env 键存在(var_os)就会尝试导入,空值直接
+      # codesign 失败(实踩 v4.0.0 发布日两轮)。未配置时一个变量都不写 =
+      # bundler 走默认 adhoc(v3.5.0 以来的行为)。step 的 if 也不能读 secrets
+      # (违规=workflow 解析即败),故先在 job 级 env 折叠 HAS_CERT 布尔。
+      - name: 注入 Apple 签名环境
+        if: runner.os == 'macOS' && env.HAS_CERT == '1'
         env:
-          KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          CERT_B64: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PASS: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGN_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          API_KEY: ${{ secrets.APPLE_API_KEY }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
         run: |
-          printf '%s' "$KEY_B64" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"
-          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
-          echo "已落盘公证密钥 $RUNNER_TEMP/AuthKey.p8"
+          w() { # 多行 heredoc 语法写入 GITHUB_ENV,值原样免转义(p12 口令可含特殊字符)
+            { printf '%s<<__E__\n' "$1"; cat; printf '\n__E__\n'; } >> "$GITHUB_ENV"
+          }
+          printf '%s' "$CERT_B64" | w APPLE_CERTIFICATE
+          printf '%s' "$CERT_PASS" | w APPLE_CERTIFICATE_PASSWORD
+          if [ -n "$SIGN_IDENTITY" ]; then
+            printf '%s' "$SIGN_IDENTITY" | w APPLE_SIGNING_IDENTITY
+          fi
+          if [ -n "$API_KEY" ] && [ -n "$API_ISSUER" ] && [ -n "$API_KEY_B64" ]; then
+            printf '%s' "$API_KEY" | w APPLE_API_KEY
+            printf '%s' "$API_ISSUER" | w APPLE_API_ISSUER
+            printf '%s' "$API_KEY_B64" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"
+            printf '%s' "$RUNNER_TEMP/AuthKey.p8" | w APPLE_API_KEY_PATH
+          fi
+          echo "已注入 Apple 签名/公证环境"
 
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 未配置证书时 APPLE_CERTIFICATE 展开为空串,tauri bundler 仍会尝试 import(实踩:
-          # SecKeychainItemImport "Unable to decode the provided data")——必须显式给
-          # APPLE_SIGNING_IDENTITY="-" 走官方 adhoc 路径(跳过导入与公证),配置后自动切换。
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ env.HAS_CERT == '1' && secrets.APPLE_SIGNING_IDENTITY || '-' }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY_PATH: ${{ env.HAS_CERT == '1' && env.APPLE_API_KEY_PATH || '' }}
         with:
           projectPath: client
           args: ${{ matrix.args }}
