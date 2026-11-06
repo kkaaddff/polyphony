@@ -17,12 +17,17 @@ test.describe("首页桌面形态", () => {
     );
     expect(overflowed).toBe(false);
 
-    // 双栏:创建按钮(左栏)与文档列表(右栏)横向并列
+    // 双栏:左栏(加入表单+文档列表)与右栏详情占位横向并列(v4.0 图9 改版)
     const create = await page.getByRole("button", { name: "创建新文档" }).boundingBox();
     const listHeader = await page.getByText("我的文档", { exact: true }).boundingBox();
+    const paneEmpty = await page.getByText("从左侧选择一个文档").boundingBox();
     expect(create).toBeTruthy();
     expect(listHeader).toBeTruthy();
-    expect(listHeader!.x).toBeGreaterThan(create!.x + create!.width * 0.5);
+    expect(paneEmpty).toBeTruthy();
+    // 左栏窄:列表头与创建按钮同侧(创建在列表上方)
+    expect(listHeader!.y).toBeGreaterThan(create!.y);
+    // 右栏详情区在左栏右侧
+    expect(paneEmpty!.x).toBeGreaterThan(listHeader!.x + 100);
 
     // 左栏为窄栏(创建按钮宽 < 60% 视口)
     const vw = page.viewportSize()!.width;

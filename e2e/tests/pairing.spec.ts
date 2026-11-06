@@ -15,15 +15,15 @@ async function openPairModal(browser: Browser): Promise<{ page: Page; name: stri
   await page.getByTitle("账号菜单").click();
   await page.getByRole("menuitem", { name: "登录新设备" }).click();
   await expect(page.getByRole("heading", { name: "登录新设备" })).toBeVisible();
-  // QR 已自动生成(120s 有效)
-  await expect(page.getByText(/二维码剩余 \d+:\d{2}/)).toBeVisible({ timeout: 10_000 });
+  // 配对自动创建(一个码同出二维码与链接)
+  await expect(page.getByText(/剩余 \d+:\d{2}/)).toBeVisible({ timeout: 10_000 });
   return { page, name: acc.name };
 }
 
-/** 生成邀请链接并返回其 URL(只读展示,e2e 从 DOM 取,不依赖剪贴板)。 */
+/** 复制配对链接并返回其 URL(点「或复制配对链接」→ 只读 input 出现,从 DOM 取)。 */
 async function generateLink(page: Page): Promise<string> {
-  await page.getByRole("button", { name: "生成链接" }).click();
-  const input = page.getByLabel("复制链接");
+  await page.getByRole("button", { name: "或复制配对链接" }).click();
+  const input = page.getByRole("textbox", { name: "或复制配对链接" });
   await expect(input).toHaveValue(/\/pair\?code=/);
   // dev 环境:链接 host 是 API 源(:3001,无静态托管);生产 all-in-one 同源无此差异。
   // 手机语义 = 打开 Web 应用源、API 地址由 ?server= 携带,这里同样换到 :5173。
@@ -102,7 +102,7 @@ test.describe("配对登录 push(链接)", () => {
     await expect(page2.getByRole("heading", { name: "请在发起设备上确认" })).toBeVisible();
 
     // 列表含 QR(pending)与链接(claimed)两项,撤销要落在「链接」那一行
-    const linkRow = page1.locator("li", { hasText: "link" });
+    const linkRow = page1.locator("li", { hasText: "本机发起" }).first();
     await expect(linkRow.getByRole("button", { name: "撤销" })).toBeVisible({
       timeout: 5000,
     });

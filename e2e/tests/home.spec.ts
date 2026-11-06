@@ -37,11 +37,13 @@ test.describe("守卫与顶栏身份", () => {
     expect(overflowed).toBe(false);
   });
 
-  test("创建新文档 → 直进编辑器", async ({ page }) => {
+  test("创建新文档 → 右栏面板原地打开", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
-    await expect(page).toHaveURL(/\/editor\?code=[A-Z0-9]{8}/);
+    // 不再跳完整编辑器:URL 不变,右栏 DocPane 打开(「完整编辑器」入口可见)
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("button", { name: "完整编辑器" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("空文档码加入:提示补全", async ({ page }) => {
@@ -68,7 +70,8 @@ test.describe("守卫与顶栏身份", () => {
     // 粘贴 8 位码同样能进文档
     await page.locator("#pasteLink").fill(code);
     await page.getByRole("button", { name: "识别" }).click();
-    await expect(page).toHaveURL(new RegExp(`/editor\\?code=${code}`));
+    // 加入 → 右栏面板打开(不再导航)
+    await expect(page.getByRole("button", { name: "完整编辑器" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("文档码加入 → 编辑器(不存在的码:提示缺失)", async ({ page }) => {
@@ -77,7 +80,7 @@ test.describe("守卫与顶栏身份", () => {
     await page.goto("/");
     await page.locator("#roomCode").fill(code);
     await page.getByRole("button", { name: "加入文档" }).click();
-    await expect(page).toHaveURL(new RegExp(`/editor\\?code=${code}`));
+    await expect(page.getByRole("button", { name: "完整编辑器" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("加入不存在的文档:alert 提示且不进编辑器", async ({ page }) => {
@@ -92,14 +95,14 @@ test.describe("守卫与顶栏身份", () => {
 });
 
 test.describe("我的文档(成员登记)", () => {
-  test("进入自动登记;所有者删除→回收站标记→✕ 移出列表", async ({ page }) => {
+  test("创建→面板打开→退出面板→所有者删除→回收站→✕ 移出列表", async ({ page }) => {
     await loginTestAccount(page);
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
-    await expect(page).toHaveURL(/\/editor/);
+    await expect(page.getByRole("button", { name: "完整编辑器" })).toBeVisible({ timeout: 10_000 });
+    // 面板人数菜单「退出文档」= 关闭面板回列表(文档已登记)
     await page.getByTitle("在线用户与更多操作").click();
     await page.getByRole("menuitem", { name: "退出文档" }).click();
-    // 回首页:文档已登记(未命名 + 随机码行),所有者行是 🗑 删除而非 ✕ 退出
     await expect(
       page.getByText("未命名文档", { exact: true })
     ).toBeVisible({ timeout: 10_000 });

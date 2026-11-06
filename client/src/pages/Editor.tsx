@@ -221,6 +221,29 @@ export default function Editor() {
         userCount={users.length}
         onRename={renameRoom}
         onLeave={() => navigate("/")}
+        actions={
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+              {t("editor.charCount", { n: content.length })}
+            </span>
+            <button
+              onClick={() => void doExport()}
+              disabled={docBusy}
+              className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+            >
+              {t("editor.exportBtn")}
+            </button>
+            {isOwner && (
+              <button
+                onClick={() => void doDelete()}
+                disabled={docBusy}
+                className="px-2 py-1 rounded border border-red-300 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {t("editor.deleteBtn")}
+              </button>
+            )}
+          </div>
+        }
       />
 
       {error && (
@@ -238,32 +261,6 @@ export default function Editor() {
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <div className="min-w-0 flex-1 flex flex-col p-4 md:p-6">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg flex-1 overflow-hidden flex flex-col">
-            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t("editor.docContent")}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {t("editor.charCount", { n: content.length })}
-                </span>
-                <button
-                  onClick={() => void doExport()}
-                  disabled={docBusy}
-                  className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                >
-                  {t("editor.exportBtn")}
-                </button>
-                {isOwner && (
-                  <button
-                    onClick={() => void doDelete()}
-                    disabled={docBusy}
-                    className="px-2 py-1 rounded border border-red-300 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {t("editor.deleteBtn")}
-                  </button>
-                )}
-              </div>
-            </div>
             <div className="flex-1 overflow-auto">
               <MDXEditor
                 ref={editorRef}

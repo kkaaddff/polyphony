@@ -1,11 +1,13 @@
-// 顶栏:房间名(就地重命名)+ 房间码(点击复制,toast 反馈)+ 连接状态 + 「👥 n」菜单
-// (发送邀请 / 退出房间;移动端首项「在线用户」开底部面板)。v3.5.0 起独立按钮全部收敛进菜单。
+// 顶栏:品牌(点击回首页)+ 房间名(就地重命名)+ 房间码(点击复制邀请链接)+ 连接状态 +
+// 自定义操作区(字数/导出/删除由 Editor 注入) + 「👥 n」菜单(发送邀请 / 退出房间)。
 // 响应式:flex-wrap 两行式——移动端不再挤压;曾因元素重叠导致「退出房间」点不动。
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { QrModal } from "@/components/QrModal";
 import { Menu, MenuItem } from "@/components/Menu";
 import { ChevronDownIcon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import { copyText } from "@/lib/clipboard";
 import { getServerBase } from "@/lib/serverConfig";
 import { buildJoinUrl } from "@/lib/qr";
 import { useT } from "@/i18n";
@@ -17,6 +19,8 @@ interface RoomHeaderProps {
   userCount: number;
   onRename: (name: string) => void;
   onLeave: () => void;
+  /** 顶栏右侧自定义操作(字数/导出/删除),渲染在连接状态左边 */
+  actions?: React.ReactNode;
 }
 
 export function RoomHeader({
@@ -26,9 +30,11 @@ export function RoomHeader({
   userCount,
   onRename,
   onLeave,
+  actions,
 }: RoomHeaderProps) {
   const { t } = useT();
   const toast = useToast();
+  const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [showQr, setShowQr] = useState(false);
@@ -43,23 +49,12 @@ export function RoomHeader({
     setEditing(false);
   };
 
-  const copyRoomCode = async () => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(roomCode);
-      } else {
-        // 非安全上下文（http://IP 直连）无 Async Clipboard：execCommand 降级
-        const ta = document.createElement("textarea");
-        ta.value = roomCode;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        ta.remove();
-      }
-      toast.show(t("roomHeader.copyOk"), "success");
-    } catch {
+  // 点击文档码 → 复制**邀请链接**(对方点开/扫码直接进本文档,而非裸码)
+  const copyInviteLink = async () => {
+    const url = buildJoinUrl(getServerBase(), roomCode);
+    if (await copyText(url)) {
+      toast.show(t("roomHeader.copyLinkOk"), "success");
+    } else {
       toast.show(t("roomHeader.copyFail", { code: roomCode }), "error");
     }
   };
@@ -68,10 +63,14 @@ export function RoomHeader({
     <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 md:px-6 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
       {/* 左组:品牌 + 房间名/码(可收缩,长名 truncate) */}
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        {/* 品牌:桌面显示;移动端隐藏(顶栏空间留给房间名/码,品牌在 welcome 页呈现) */}
-        <h1 className="hidden md:block text-lg md:text-xl font-bold text-gray-900 dark:text-white shrink-0">
+        {/* 品牌:点击回首页;桌面显示,移动端隐藏(顶栏空间留给房间名/码) */}
+        <button
+          onClick={() => navigate("/")}
+          title={t("roomHeader.brandHomeTitle")}
+          className="hidden md:block text-lg md:text-xl font-bold text-gray-900 dark:text-white shrink-0 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors"
+        >
           {t("common.appName")}
-        </h1>
+        </button>
         <span className="text-sm text-gray-600 dark:text-gray-400 shrink-0 hidden sm:inline">
           {t("roomHeader.room")}
         </span>
@@ -105,9 +104,9 @@ export function RoomHeader({
               {roomName || t("common.unnamedDoc")}
             </button>
           )}
-          {/* 房间码即复制按钮:点一下 → toast「房间号已复制」(不再设独立复制按钮) */}
+          {/* 房间码即复制按钮:点一下 → 复制邀请链接(toast「链接已复制」) */}
           <button
-            onClick={copyRoomCode}
+            onClick={() => void copyInviteLink()}
             title={t("roomHeader.copyCodeTitle")}
             className="bg-gray-100 dark:bg-gray-700 px-2 rounded text-xs md:text-sm font-mono text-gray-900 dark:text-white shrink-0 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-tap-38 flex items-center"
           >
@@ -116,8 +115,9 @@ export function RoomHeader({
         </div>
       </div>
 
-      {/* 右组:连接状态 + 人数菜单(不收缩,独立成行也不重叠) */}
+      {/* 右组:自定义操作(字数/导出/删除) + 连接状态 + 人数菜单(不收缩) */}
       <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+        {actions}
         <div className="flex items-center gap-1.5 px-1">
           <div
             className={`w-2 h-2 rounded-full ${

@@ -41,6 +41,12 @@ export const zh = {
     leaveSingleTitle: "退出该文档",
     leaveSingleConfirm: "退出后仍可凭文档代码再次加入。确定退出 {code}？",
     leaveBatchConfirm: "退出后仍可凭文档代码再次加入。确定退出所选 {n} 个文档？",
+    paneEmptyTitle: "从左侧选择一个文档",
+    paneEmptyDesc: "选中后可在此直接查看与编辑内容；「完整编辑器」提供全功能界面。",
+  },
+
+  docPane: {
+    openFull: "完整编辑器",
   },
 
   settings: {
@@ -147,7 +153,9 @@ export const zh = {
     renameTitle: "点击重命名文档",
     copyOk: "文档号已复制",
     copyFail: "复制失败，请手动记录文档码：{code}",
-    copyCodeTitle: "点击复制文档码",
+    copyCodeTitle: "点击复制邀请链接",
+    copyLinkOk: "邀请链接已复制",
+    brandHomeTitle: "返回首页",
     countBtnTitle: "在线用户与更多操作",
     invite: "发送邀请",
     connected: "已连接",
@@ -180,17 +188,17 @@ export const zh = {
     pasteInstead: "改用粘贴",
   },
 
-  // 配对登录(发起端弹窗,docs/identity-and-sharing.md §4.6):push QR/链接 + 配对列表
+  // 配对登录(发起端弹窗,docs/identity-and-sharing.md §4.6):一个配对码同时出二维码与链接
   pair: {
     entry: "登录新设备",
     qrTitle: "新设备扫码配对",
-    qrRemain: "二维码剩余 {time}",
-    linkTitle: "或生成配对链接",
+    qrRemain: "剩余 {time}",
+    linkTitle: "或复制配对链接",
     linkTtl: "{n} 分钟",
-    linkGen: "生成链接",
+    linkGen: "生成配对",
     listTitle: "进行中的配对",
     dirPull: "新设备请求登录",
-    kindQrOrLink: "本机发起 · {kind}",
+    dirPush: "本机发起",
     expired: "已过期",
     waitingYou: "等待你确认",
     approveBtn: "批准",

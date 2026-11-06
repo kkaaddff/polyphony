@@ -124,10 +124,10 @@ test.describe("首页(移动单列)", () => {
       page.getByRole("heading", { name: "Polyphony", exact: true })
     ).toBeHidden();
 
-    // 单列:创建按钮占满视口宽度(≥90%)
-    const vw = page.viewportSize()!.width;
+    // 创建按钮=加入表单内的小按钮,与输入框同宽(同卡)
+    const input = await page.locator("#roomCode").boundingBox();
     const create = await page.getByRole("button", { name: "创建新文档" }).boundingBox();
-    expect(create!.width).toBeGreaterThan(vw * 0.9);
+    expect(create!.width).toBeGreaterThan(input!.width - 4);
 
     // 文档行操作按钮触达(曾被裁出屏外的 ▦/✕)
     await expectTapSize(page, ["创建新文档", "加入文档"]);
@@ -175,6 +175,9 @@ test.describe("编辑器(移动)", () => {
     await loginTestAccount(page);
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
+    // 创建 → 首页右栏面板;进「完整编辑器」页面继续(工具栏/底部面板/二维码弹层属完整页)
+    await page.getByRole("button", { name: "完整编辑器" }).click();
+    await expect(page).toHaveURL(/\/editor\?code=[A-Z0-9]{8}/);
     await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 20_000 });
 
     await expectNoBreakout(page); // 核心回归:曾整页可左右晃
@@ -213,6 +216,9 @@ test.describe("编辑器(移动)", () => {
     await loginTestAccount(page);
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
+    // 创建 → 首页右栏面板;进「完整编辑器」页面继续(工具栏/底部面板/二维码弹层属完整页)
+    await page.getByRole("button", { name: "完整编辑器" }).click();
+    await expect(page).toHaveURL(/\/editor\?code=[A-Z0-9]{8}/);
     await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 20_000 });
 
     // 移动端常驻侧栏应隐藏,改由顶栏人数菜单进入底部面板
@@ -240,6 +246,9 @@ test.describe("编辑器(移动)", () => {
     await loginTestAccount(page);
     await page.goto("/");
     await page.getByRole("button", { name: "创建新文档" }).click();
+    // 创建 → 首页右栏面板;进「完整编辑器」页面继续(工具栏/底部面板/二维码弹层属完整页)
+    await page.getByRole("button", { name: "完整编辑器" }).click();
+    await expect(page).toHaveURL(/\/editor\?code=[A-Z0-9]{8}/);
     await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 20_000 });
     await page.getByTitle(/在线用户/).click();
     await page.getByRole("menuitem", { name: "发送邀请" }).click();

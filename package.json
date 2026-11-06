@@ -18,7 +18,9 @@
     "lint": "npm --prefix client run lint",
     "server": "node --disable-warning=ExperimentalWarning server/index.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
-    "dev:lan": "bash scripts/dev-lan.sh"
+    "dev:lan": "bash scripts/dev-lan.sh",
+    "android:build": "bash scripts/android-local.sh",
+    "android:build:install": "bash scripts/android-local.sh --install"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

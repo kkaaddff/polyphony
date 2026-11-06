@@ -44,7 +44,7 @@ before(() => {
 
 test('push 全流程:claim→同账号批准→设备写入;全部配对响应不含 secret;轮询幂等', () => {
   const owner = mkAccount(`发起者${++seq}`);
-  const { code } = createPushPairing(accountOf(owner), 'qr', undefined, T0);
+  const { code } = createPushPairing(accountOf(owner), undefined, T0);
 
   const secret = newSecret();
   const pending = auth.buildPendingDevice(secret, { client: 'app', os: 'android' }, UA);
@@ -81,7 +81,7 @@ test('push 全流程:claim→同账号批准→设备写入;全部配对响应�
 
 test('push:双 claim 409;poll deviceId 不符 410(防探测)', () => {
   const owner = mkAccount(`发起者${++seq}`);
-  const { code } = createPushPairing(accountOf(owner), 'link', 5, T0);
+  const { code } = createPushPairing(accountOf(owner), 5, T0);
   const p1 = auth.buildPendingDevice(newSecret(), {}, UA);
   claimPushPairing(code, p1, T0 + 1);
   const p2 = auth.buildPendingDevice(newSecret(), {}, UA);
@@ -95,8 +95,8 @@ test('push:双 claim 409;poll deviceId 不符 410(防探测)', () => {
 test('push 活跃上限 3:最旧被静默淘汰为 cancelled', () => {
   const owner = mkAccount(`发起者${++seq}`);
   const codes = [];
-  for (let i = 0; i < 3; i++) codes.push(createPushPairing(accountOf(owner), 'link', 60, T0 + i).code);
-  const fourth = createPushPairing(accountOf(owner), 'link', 60, T0 + 10).code;
+  for (let i = 0; i < 3; i++) codes.push(createPushPairing(accountOf(owner), 60, T0 + i).code);
+  const fourth = createPushPairing(accountOf(owner), 60, T0 + 10).code;
   const list = listPairingsForAccount(accountOf(owner).id, T0 + 11);
   const byCode = Object.fromEntries(list.map((x) => [x.code, x]));
   assert.equal(list.length, 4);
@@ -152,7 +152,7 @@ test('pull 全局上限 500:E_PAIR_BUSY', () => {
 
 test('清扫:已决记录过期后消失,但已写入的设备不受影响', () => {
   const owner = mkAccount(`发起者${++seq}`);
-  const { code } = createPushPairing(accountOf(owner), 'qr', undefined, T0);
+  const { code } = createPushPairing(accountOf(owner), undefined, T0);
   const secret = newSecret();
   const pending = auth.buildPendingDevice(secret, {}, UA);
   claimPushPairing(code, pending, T0 + 1);
@@ -167,7 +167,7 @@ test('清扫:已决记录过期后消失,但已写入的设备不受影响', () 
 
 test('cancel:approved 记录撤销 → 已写入设备一并吊销', () => {
   const owner = mkAccount(`发起者${++seq}`);
-  const { code } = createPushPairing(accountOf(owner), 'link', 15, T0);
+  const { code } = createPushPairing(accountOf(owner), 15, T0);
   const secret = newSecret();
   const pending = auth.buildPendingDevice(secret, {}, UA);
   claimPushPairing(code, pending, T0 + 1);
@@ -180,7 +180,7 @@ test('cancel:approved 记录撤销 → 已写入设备一并吊销', () => {
 
 test('deviceOnline:批准后未上线 false,首次鉴权后 true', () => {
   const owner = mkAccount(`发起者${++seq}`);
-  const { code } = createPushPairing(accountOf(owner), 'link', 15, T0);
+  const { code } = createPushPairing(accountOf(owner), 15, T0);
   const secret = newSecret();
   const pending = auth.buildPendingDevice(secret, {}, UA);
   claimPushPairing(code, pending, T0 + 1);
@@ -197,8 +197,8 @@ test('countPendingPairings:仅统计本账号 claimed 的 push', () => {
   const owner = mkAccount(`发起者${++seq}`);
   const acc = accountOf(owner);
   assert.equal(countPendingPairings(acc.id, T0), 0);
-  const a = createPushPairing(acc, 'qr', undefined, T0).code;
-  const b = createPushPairing(acc, 'qr', undefined, T0 + 1).code;
+  const a = createPushPairing(acc, undefined, T0).code;
+  const b = createPushPairing(acc, undefined, T0 + 1).code;
   claimPushPairing(b, auth.buildPendingDevice(newSecret(), {}, UA), T0 + 2);
   assert.equal(countPendingPairings(acc.id, T0 + 3), 1);
   claimPushPairing(a, auth.buildPendingDevice(newSecret(), {}, UA), T0 + 4);

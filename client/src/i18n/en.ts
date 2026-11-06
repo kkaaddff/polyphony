@@ -46,6 +46,12 @@ export const en = {
     leaveSingleTitle: "Leave this document",
     leaveSingleConfirm: "You can rejoin later with the document code. Leave {code}?",
     leaveBatchConfirm: "You can rejoin later with document codes. Leave the {n} selected documents?",
+    paneEmptyTitle: "Pick a document on the left",
+    paneEmptyDesc: "Once selected, view and edit it right here; \"Full editor\" opens the complete UI.",
+  },
+
+  docPane: {
+    openFull: "Full editor",
   },
 
   settings: {
@@ -149,7 +155,9 @@ export const en = {
     renameTitle: "Click to rename",
     copyOk: "Document code copied",
     copyFail: "Copy failed — document code: {code}",
-    copyCodeTitle: "Tap to copy the document code",
+    copyCodeTitle: "Tap to copy the invite link",
+    copyLinkOk: "Invite link copied",
+    brandHomeTitle: "Back to home",
     countBtnTitle: "Online users and more",
     invite: "Send invite",
     connected: "Connected",
@@ -184,13 +192,13 @@ export const en = {
   pair: {
     entry: "Log in a device",
     qrTitle: "Pair by QR",
-    qrRemain: "QR expires in {time}",
-    linkTitle: "Or generate a pairing link",
+    qrRemain: "{time} left",
+    linkTitle: "Or copy the pairing link",
     linkTtl: "{n} min",
-    linkGen: "Generate link",
+    linkGen: "Create pairing",
     listTitle: "Active pairings",
     dirPull: "Device requesting sign-in",
-    kindQrOrLink: "From this device · {kind}",
+    dirPush: "From this device",
     expired: "Expired",
     waitingYou: "Waiting for you",
     approveBtn: "Approve",

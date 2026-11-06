@@ -37,10 +37,13 @@ test.describe("/join 分流", () => {
     await page.goto(`/?join=${longA}`);
     await expect(page.locator("#roomCode")).toHaveValue(codeA);
     await page.getByRole("button", { name: "加入文档" }).click();
-    await expect(page).toHaveURL(new RegExp(`/editor\\?code=${codeA}`));
+    // 加入 → 右栏面板打开;面板 RoomHeader 显示截断后的码
+    const paneBtn = page.getByRole("button", { name: "完整编辑器" });
+    await expect(paneBtn).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: codeA })).toBeVisible();
 
     // /join 直达路径同样截断
     await page.goto(`/join?code=${longB}`);
-    await expect(page).toHaveURL(new RegExp(`/editor\\?code=${codeB}`));
+    await expect(page.getByRole("button", { name: codeB })).toBeVisible({ timeout: 10_000 });
   });
 });

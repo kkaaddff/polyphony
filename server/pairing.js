@@ -51,17 +51,12 @@ export function _resetForTest() {
 
 // ---------- push(已登录端发起) ----------
 
-export function createPushPairing(account, kind, ttlMinutes, now = Date.now()) {
+// push 创建:一个配对码同时用于扫码与链接(v4.0 联调反馈:qr/link 不再分成两条记录),
+// TTL 走分钟档(默认 5)。二维码只是该配对码的另一种呈现形态。
+export function createPushPairing(account, ttlMinutes, now = Date.now()) {
   sweep(now);
-  let expiresAt;
-  if (kind === 'qr') {
-    expiresAt = now + QR_TTL_MS;
-  } else if (kind === 'link') {
-    const ttl = LINK_TTL_MINUTES.includes(ttlMinutes) ? ttlMinutes : 5;
-    expiresAt = now + ttl * 60_000;
-  } else {
-    throw err('E_PAIR_KIND', '配对类型须为 qr 或 link');
-  }
+  const ttl = LINK_TTL_MINUTES.includes(ttlMinutes) ? ttlMinutes : 5;
+  const expiresAt = now + ttl * 60_000;
 
   // 每账号活跃 push ≤3:静默淘汰最旧(被淘汰者 poll 可见 cancelled)
   const mine = [...pairings.values()]
@@ -76,7 +71,6 @@ export function createPushPairing(account, kind, ttlMinutes, now = Date.now()) {
   const p = {
     code: newCode(),
     direction: 'push',
-    kind,
     accountId: account.id,
     accountName: account.name,
     pendingDevice: null, // claim 时登记
@@ -102,7 +96,6 @@ export function requestPullPairing(pending, now = Date.now()) {
   const p = {
     code: newCode(),
     direction: 'pull',
-    kind: 'qr',
     accountId: null, // 批准时绑定
     accountName: null,
     pendingDevice: pending,
@@ -123,10 +116,10 @@ export function getPairingInfo(code, now = Date.now()) {
   if (!p) throw err('E_PAIR_EXPIRED', '配对码不存在或已过期');
   if (p.direction === 'push') {
     // 落地页预览:显示将登录哪个账号(不暴露设备信息)
-    return { direction: 'push', kind: p.kind, status: p.status, accountName: p.accountName, expiresAt: p.expiresAt };
+    return { direction: 'push', status: p.status, accountName: p.accountName, expiresAt: p.expiresAt };
   }
   // pull:绝不暴露账号信息,只给新设备平台名(批准页防钓鱼锚点)
-  return { direction: 'pull', kind: p.kind, status: p.status, newcomerLabel: p.pendingDevice?.label, expiresAt: p.expiresAt };
+  return { direction: 'pull', status: p.status, newcomerLabel: p.pendingDevice?.label, expiresAt: p.expiresAt };
 }
 
 export function listPairingsForAccount(accountId, now = Date.now()) {
@@ -136,7 +129,6 @@ export function listPairingsForAccount(accountId, now = Date.now()) {
     .map((p) => ({
       code: p.code,
       direction: p.direction,
-      kind: p.kind,
       status: p.status,
       accountName: p.accountName,
       newcomerLabel: p.pendingDevice?.label,

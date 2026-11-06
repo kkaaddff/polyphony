@@ -37,11 +37,11 @@ export function pairRouter(deps) {
 
   const ua = (req) => req.headers['user-agent'] ?? '';
 
-  // push:已登录端发起(QR 固定 2 分钟;链接 5/15/30/60 分钟档)
+  // push:已登录端发起(一个配对码同出二维码与链接;TTL 5/15/30/60 分钟档,默认 5)
   r.post('/create', requireAuth, (req, res) => {
     try {
-      const p = createPushPairing(req.account, req.body?.kind, req.body?.ttlMinutes);
-      pairLog('create', p.code, ` push kind=${req.body?.kind} account=${req.account.name}`);
+      const p = createPushPairing(req.account, req.body?.ttlMinutes);
+      pairLog('create', p.code, ` push ttl=${req.body?.ttlMinutes || 5}m account=${req.account.name}`);
       res.status(201).json(p);
     } catch (e) {
       sendErr(res, e);

@@ -77,6 +77,21 @@ export function useCollaboration({
   const metaRef = useRef<Y.Map<unknown> | null>(null);
   const contentRef = useRef<string>("");
 
+  // 回调经 ref 转接:支持 roomCode 动态切换(首页内嵌轻量编辑器,图9 反馈)时
+  // 不因调用方每次渲染的新函数而重建 provider(=全员断线)。
+  const cbsRef = useRef({
+    onContentChange,
+    onUsersChange,
+    onRoomNameChange,
+    onDocUnavailable,
+  });
+  cbsRef.current = {
+    onContentChange,
+    onUsersChange,
+    onRoomNameChange,
+    onDocUnavailable,
+  };
+
   useEffect(() => {
     if (!roomCode) {
       return;
@@ -131,13 +146,13 @@ export function useCollaboration({
           name: userState.name,
           color: userState.color ?? getUserColor(userState.id),
         }));
-      onUsersChange(users);
+      cbsRef.current.onUsersChange(users);
     };
 
     const handleTextUpdate = () => {
       const text = yText.toString();
       contentRef.current = text;
-      onContentChange(text);
+      cbsRef.current.onContentChange(text);
     };
 
     provider.on("status", ({ status }: { status: string }) => {
@@ -153,7 +168,7 @@ export function useCollaboration({
       if (event?.code === 4004 || event?.code === 4010) {
         if (!docUnavailableFired) {
           docUnavailableFired = true;
-          onDocUnavailable?.(event.code === 4010 ? "trashed" : "missing");
+          cbsRef.current.onDocUnavailable?.(event.code === 4010 ? "trashed" : "missing");
         }
         return;
       }
@@ -170,13 +185,13 @@ export function useCollaboration({
 
     // 共享房间名（Yjs meta map，房间内全员同步；一人改名 → 全员 observe 生效）
     const readRoomName = () =>
-      onRoomNameChange((yMeta.get("roomName") as string) ?? "");
+      cbsRef.current.onRoomNameChange((yMeta.get("roomName") as string) ?? "");
     yMeta.observe(readRoomName);
     readRoomName();
 
     const initialContent = yText.toString();
     contentRef.current = initialContent;
-    onContentChange(initialContent);
+    cbsRef.current.onContentChange(initialContent);
 
     awareness.setLocalState({
       user: {
@@ -205,7 +220,7 @@ export function useCollaboration({
       provider.destroy();
       doc.destroy();
     };
-  }, []);
+  }, [roomCode]);
 
   const applyLocalChange = useCallback(
     (nextContent: string) => {

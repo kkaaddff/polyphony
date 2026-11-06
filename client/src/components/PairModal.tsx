@@ -1,5 +1,6 @@
-// 「登录其他设备」弹窗(v2,docs/identity-and-sharing.md §4.6 发起端):
-// push QR(2 分钟) + 链接(5/15/30/60 档) + 本账号未清扫配对列表(确认/拒绝/撤销)。
+// 「登录新设备」弹窗(v2 复用版,docs/identity-and-sharing.md §4.6):
+// 一个配对码同时呈现二维码与链接(qr/link 不再分成两条记录,v4.0 联调反馈),
+// TTL 5/15/30/60 分钟档;列表展示本账号全部未清扫配对(批准/拒绝/撤销)。
 import { useEffect, useRef, useState } from "react";
 import { buildPairUrl, renderQr } from "@/lib/qr";
 import { copyText } from "@/lib/clipboard";
@@ -23,11 +24,9 @@ interface PairModalProps {
 export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
   const { t } = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [qr, setQr] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [pairing, setPairing] = useState<{ code: string; expiresAt: number } | null>(null);
   const [linkTtl, setLinkTtl] = useState<number>(LINK_TTL_MINUTES[0]);
-  const [link, setLink] = useState<{ url: string; expiresAt: number } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState("");
+  const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -44,49 +43,43 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // QR:无 qr 型配对时自动创建;过期自动重建(扫过的码留在列表里显示终态)。
+  // 无在途配对时自动创建;过期自动重建(被扫过的码留在列表里显示终态)。
   // 在途用 ref 防重入 —— 若把 busy 放进依赖,首轮 effect 的 cleanup 会把
   // 刚创建的结果作废,形成「创建→作废→再创建」风暴(挤爆每账号 3 个配对)。
-  const activeQr = qr && now < qr.expiresAt ? qr : null;
+  const activePairing = pairing && now < pairing.expiresAt ? pairing : null;
   const creatingRef = useRef(false);
   useEffect(() => {
-    if (activeQr || creatingRef.current) return;
+    if (activePairing || creatingRef.current) return;
     creatingRef.current = true;
-    setBusy(true);
-    createPushPairing("qr")
-      .then((r) => setQr(r))
+    createPushPairing(linkTtl)
+      .then((r) => setPairing(r))
       .catch(() => {
         /* 失败下次渲染重试 */
       })
       .finally(() => {
         creatingRef.current = false;
-        setBusy(false);
       });
-  }, [activeQr]);
+  }, [activePairing, linkTtl]);
 
   useEffect(() => {
-    if (activeQr && canvasRef.current) {
-      renderQr(canvasRef.current, buildPairUrl(getServerBase(), activeQr.code)).catch(console.error);
+    if (activePairing && canvasRef.current) {
+      renderQr(canvasRef.current, buildPairUrl(getServerBase(), activePairing.code)).catch(
+        console.error
+      );
     }
-  }, [activeQr]);
+  }, [activePairing]);
 
-  const makeLink = async () => {
-    setBusy(true);
-    try {
-      const r = await createPushPairing("link", linkTtl);
-      setLink({ url: buildPairUrl(getServerBase(), r.code), expiresAt: r.expiresAt });
-      refresh();
-    } catch {
-      /* 忽略 */
-    } finally {
-      setBusy(false);
-    }
+  // 换 TTL 档 → 重建配对(当前码整体作废,撤销语义一致)
+  const changeTtl = (m: number) => {
+    setLinkTtl(m);
+    setPairing(null);
   };
 
-  const copy = async (key: string, text: string) => {
-    if (await copyText(text)) {
-      setCopied(key);
-      setTimeout(() => setCopied(""), 1500);
+  const copy = async () => {
+    if (!pairing) return;
+    if (await copyText(buildPairUrl(getServerBase(), pairing.code))) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
     }
   };
 
@@ -102,6 +95,7 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
   const cancel = async (code: string) => {
     try {
       await cancelPairing(code);
+      if (pairing?.code === code) setPairing(null);
       refresh();
     } catch {
       refresh();
@@ -119,67 +113,55 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
       >
         <h3 className="font-semibold text-gray-900">{t("pair.entry")}</h3>
 
-        {/* 二维码(2 分钟,过期自动刷新) */}
-        <section className="text-center space-y-2">
-          <p className="text-sm font-medium text-gray-700">{t("pair.qrTitle")}</p>
-          {activeQr ? (
+        {/* 二维码 + 链接:同一个配对码的两种形态(TTL 档可换,换档即重建) */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium text-gray-700">{t("pair.qrTitle")}</p>
+            <div className="flex gap-1" role="radiogroup" aria-label={t("pair.linkTitle")}>
+              {LINK_TTL_MINUTES.map((m) => (
+                <button
+                  key={m}
+                  onClick={() => changeTtl(m)}
+                  className={`px-2 py-1 rounded-md text-xs border transition-colors ${
+                    linkTtl === m
+                      ? "bg-blue-50 border-blue-400 text-blue-700"
+                      : "border-gray-300 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {t("pair.linkTtl", { n: m })}
+                </button>
+              ))}
+            </div>
+          </div>
+          {activePairing ? (
             <>
               <div className="flex justify-center">
                 <canvas ref={canvasRef} className="rounded-lg border border-gray-100" />
               </div>
-              <p className="text-xs text-gray-400">
-                {t("pair.qrRemain", { time: formatRemain(activeQr.expiresAt, now) })}
+              <p className="text-xs text-gray-400 text-center">
+                {t("pair.qrRemain", { time: formatRemain(activePairing.expiresAt, now) })}
               </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void copy()}
+                  className="flex-1 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
+                >
+                  {copied ? t("welcome.copied") : t("pair.linkTitle")}
+                </button>
+              </div>
+              {copied && (
+                <input
+                  type="text"
+                  readOnly
+                  value={buildPairUrl(getServerBase(), activePairing.code)}
+                  aria-label={t("pair.linkTitle")}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 font-mono"
+                />
+              )}
             </>
           ) : (
-            <p className="text-sm text-gray-400 py-6">…</p>
-          )}
-        </section>
-
-        {/* 邀请链接(分钟级档) */}
-        <section className="space-y-2 border-t border-gray-100 pt-4">
-          <p className="text-sm font-medium text-gray-700">{t("pair.linkTitle")}</p>
-          <div className="flex gap-2" role="radiogroup" aria-label={t("pair.linkTitle")}>
-            {LINK_TTL_MINUTES.map((m) => (
-              <button
-                key={m}
-                onClick={() => setLinkTtl(m)}
-                className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                  linkTtl === m
-                    ? "bg-blue-50 border-blue-400 text-blue-700"
-                    : "border-gray-300 text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {t("pair.linkTtl", { n: m })}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => void makeLink()}
-              disabled={busy}
-              className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
-            >
-              {t("pair.linkGen")}
-            </button>
-            {link && (
-              <button
-                onClick={() => void copy("link", link.url)}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
-              >
-                {copied === "link" ? t("welcome.copied") : t("qrModal.copyLink")}
-              </button>
-            )}
-          </div>
-          {link && (
-            <input
-              type="text"
-              readOnly
-              value={link.url}
-              aria-label={t("qrModal.copyLink")}
-              onFocus={(e) => e.target.select()}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 font-mono"
-            />
+            <p className="text-sm text-gray-400 py-6 text-center">…</p>
           )}
         </section>
 
@@ -195,7 +177,7 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-gray-700 truncate">
-                      {p.direction === "pull" ? t("pair.dirPull") : t("pair.kindQrOrLink", { kind: p.kind })}
+                      {p.direction === "pull" ? t("pair.dirPull") : t("pair.dirPush")}
                       {p.newcomerLabel ? ` · ${p.newcomerLabel}` : ""}
                     </span>
                     <span className="text-xs text-gray-400 shrink-0">

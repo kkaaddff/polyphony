@@ -49,11 +49,13 @@ test.describe("顶栏", () => {
   test("点击文档码复制：toast 反馈 + 剪贴板内容正确", async ({ page }) => {
     const code = await openEditor(page);
     // 文档码本身即复制按钮(不再有独立「复制」按钮)
+    // 点击文档码 = 复制邀请链接(v4.0 反馈:复制链接而非裸码)
     await page.getByRole("button", { name: code }).click();
     await expect(
-      page.getByRole("status").filter({ hasText: "文档号已复制" })
+      page.getByRole("status").filter({ hasText: "邀请链接已复制" })
     ).toBeVisible();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+    const link = await page.evaluate(() => navigator.clipboard.readText());
+    expect(link).toContain(`/join?code=${code}`);
   });
 
   test("无 clipboard API（http 直连场景）：降级复制仍有 toast 反馈", async ({ page }) => {
@@ -69,7 +71,7 @@ test.describe("顶栏", () => {
     await page.getByRole("button", { name: code }).click();
     // 不能无反馈/抛错：降级 execCommand 路径给出同样的 toast
     await expect(
-      page.getByRole("status").filter({ hasText: "文档号已复制" })
+      page.getByRole("status").filter({ hasText: "邀请链接已复制" })
     ).toBeVisible();
   });
 

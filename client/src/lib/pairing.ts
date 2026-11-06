@@ -5,16 +5,14 @@ import { authFetch, newDeviceSecret, assembleToken, setToken, getToken } from "@
 import { getServerBase } from "@/lib/serverConfig";
 import { platformInfo } from "@/platform";
 
-export type PairKind = "qr" | "link";
-/** 链接档(分钟):与服务端 docs/identity-and-sharing.md §4.4 保持一致。 */
-export const LINK_TTL_MINUTES: number[] = [5, 15, 30, 60];
 export type PairDirection = "push" | "pull";
+/** 配对 TTL 档(分钟):一个配对码同时用于扫码与链接,与服务端保持一致。 */
+export const LINK_TTL_MINUTES: number[] = [5, 15, 30, 60];
 export type PairStatus = "pending" | "claimed" | "approved" | "denied" | "cancelled";
 
 export type PairingInfo = {
   code: string;
   direction: PairDirection;
-  kind: PairKind;
   status: PairStatus;
   accountName: string | null;
   newcomerLabel: string | null;
@@ -41,13 +39,12 @@ async function throwCoded(res: Response): Promise<never> {
 // ---------- 发起端(已登录,任一设备) ----------
 
 export async function createPushPairing(
-  kind: PairKind,
   ttlMinutes?: number
 ): Promise<{ code: string; expiresAt: number }> {
   const res = await authFetch(`${getServerBase()}/auth/pair/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind, ttlMinutes }),
+    body: JSON.stringify({ ttlMinutes }),
   });
   if (!res.ok) await throwCoded(res);
   return res.json();
@@ -85,8 +82,8 @@ export async function cancelPairing(code: string): Promise<{ status: PairStatus 
 // ---------- 新设备(未登录,目标服务器来自 QR/链接/欢迎页配置) ----------
 
 export type PairInfo =
-  | { direction: "push"; kind: PairKind; status: PairStatus; accountName: string; expiresAt: number }
-  | { direction: "pull"; kind: PairKind; status: PairStatus; newcomerLabel: string | null; expiresAt: number };
+  | { direction: "push"; status: PairStatus; accountName: string; expiresAt: number }
+  | { direction: "pull"; status: PairStatus; newcomerLabel: string | null; expiresAt: number };
 
 export async function pairInfo(base: string, code: string): Promise<PairInfo> {
   const res = await fetch(`${base}/auth/pair/info?code=${encodeURIComponent(code)}`);

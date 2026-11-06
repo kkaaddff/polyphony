@@ -13,6 +13,7 @@ import { QrModal } from "@/components/QrModal";
 import { ScanModal } from "@/components/ScanModal";
 import { PairModal } from "@/components/PairModal";
 import { TrashModal } from "@/components/TrashModal";
+import { DocPane } from "@/components/DocPane";
 import { Menu, MenuItem } from "@/components/Menu";
 import { Avatar } from "@/components/Avatar";
 import { ScanIcon } from "@/components/icons";
@@ -52,6 +53,8 @@ export default function Home() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [batch, setBatch] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // 右栏选中的文档(v4.0 联调反馈图9:列表选中 → 原地展示可编辑内容)
+  const [activeCode, setActiveCode] = useState<string | null>(null);
 
   // 我的房间(memberships ⨝ docs;/health 仅作连通探测,L18 不再列文档码)
   const fetchMine = useCallback(async () => {
@@ -96,7 +99,7 @@ export default function Home() {
   }, [hasPairings, pairOpen, pendingPairings, refreshPairings]);
   const pairNeedsConfirm = pendingPairings > 0 || pairings.some((p) => p.status === "claimed");
 
-  // 统一进入房间:先查状态(L4 显式语义,不再隐式创建)→ 登记 → 跳转
+  // 统一打开文档:先查状态(L4 显式语义)→ 登记 → 右栏面板打开(不再跳完整编辑器)
   const enterRoom = useCallback(
     async (code: string) => {
       const upper = code.toUpperCase().slice(0, 8);
@@ -125,17 +128,18 @@ export default function Home() {
           /* 登记失败不阻断进房 */
         });
       upsertRecentRoom({ code: upper, name: existing });
-      navigate(`/editor?code=${upper}&name=${encodeURIComponent(account?.name ?? "")}`);
+      setActiveCode(upper);
     },
-    [myRooms, account, navigate, t]
+    [myRooms, t]
   );
 
-  // 新建:服务端生成码,创建者即所有者
+  // 新建:服务端生成码,创建者即所有者;直接在右栏打开
   const handleCreateNew = async () => {
     try {
       const { code } = await createDoc();
       upsertRecentRoom({ code, name: "" });
-      navigate(`/editor?code=${code}&name=${encodeURIComponent(account?.name ?? "")}`);
+      setActiveCode(code);
+      void fetchMine();
     } catch {
       alert(t("docs.createFail"));
     }
@@ -185,6 +189,7 @@ export default function Home() {
       const data = await res.json();
       if (Array.isArray(data?.rooms)) setMyRooms(data.rooms);
       setSelected(new Set());
+      if (activeCode && codes.includes(activeCode)) setActiveCode(null);
       for (const c of codes) clearRoomCache(c);
     } catch {
       /* 401 统一处理 */
@@ -201,11 +206,22 @@ export default function Home() {
     if (!window.confirm(t("docs.deleteConfirm", { code }))) return;
     try {
       await deleteDoc(code);
+      if (activeCode === code) setActiveCode(null);
       await fetchMine();
     } catch {
       alert(t("docs.deleteFail"));
     }
   };
+
+  // 面板内文档不可用(4004/4010):关面板 + 刷列表
+  const handlePaneUnavailable = useCallback(
+    (_code: string, kind: "missing" | "trashed") => {
+      setActiveCode(null);
+      void fetchMine();
+      alert(kind === "trashed" ? t("docs.trashedAlert") : t("docs.missingAlert"));
+    },
+    [fetchMine, t]
+  );
 
   const toggleSelect = (code: string) => {
     setSelected((prev) => {
@@ -312,7 +328,12 @@ export default function Home() {
 
       {/* 主体:桌面双栏一屏;移动单列纵排(列表内部滚动) */}
       <main className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 px-4 md:px-6 pb-4 md:pb-6 pt-3 min-h-0">
-        <section className="w-full md:w-2/5 md:max-w-sm flex flex-col gap-3 md:gap-4 min-h-0 shrink-0">
+        {/* 左栏:加入表单(新建=小按钮) + 我的文档列表 + 管理(v4.0 联调反馈图9) */}
+        <section
+          className={`w-full md:w-80 flex flex-col gap-3 min-h-0 shrink-0 ${
+            activeCode ? "hidden md:flex" : "flex"
+          }`}
+        >
           <form
             onSubmit={handleJoinRoom}
             className="shrink-0 bg-white rounded-2xl shadow-lg p-4 space-y-3"
@@ -346,156 +367,181 @@ export default function Home() {
                 <span className="hidden sm:inline">{t("home.scanBtn")}</span>
               </button>
             </div>
+            {/* 新建:次要动作=表单内小按钮(v4.0 联调反馈:原顶部巨块太占首屏) */}
+            <button
+              type="button"
+              onClick={() => void handleCreateNew()}
+              className="w-full py-2 min-h-tap-40 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-xs font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow flex items-center justify-center gap-1"
+            >
+              <span>＋</span> {t("home.createBtn")}
+            </button>
           </form>
 
-          {/* 创建:次要动作放加入表单之下(原来是顶栏式巨块,v4.0 评审:太占首屏) */}
-          <button
-            onClick={() => void handleCreateNew()}
-            className="shrink-0 w-full py-2.5 min-h-tap-44 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow flex items-center justify-center gap-1.5"
-          >
-            <span>＋</span> {t("home.createBtn")}
-          </button>
+          {/* 我的文档(服务端房间簿;列表内滚,一屏无外滚) */}
+          <div className="flex-1 min-h-0 bg-white rounded-2xl shadow-lg flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
+              <span className="text-sm font-medium text-gray-700">{t("home.myRooms")}</span>
+              {batch ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() =>
+                      setSelected(allSelected ? new Set() : new Set(selectableRooms.map((r) => r.code)))
+                    }
+                    className="text-xs text-gray-500 hover:text-blue-600"
+                  >
+                    {allSelected ? t("common.cancel") : t("home.selectAll")}
+                  </button>
+                  <button
+                    onClick={leaveSelected}
+                    disabled={selected.size === 0}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 disabled:opacity-40 transition-colors"
+                  >
+                    {t("home.leaveSelected")}
+                    {selected.size > 0 ? ` (${selected.size})` : ""}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setBatch(false);
+                      setSelected(new Set());
+                    }}
+                    className="text-xs px-2 py-1.5 text-gray-500 hover:text-gray-600"
+                  >
+                    {t("home.batchDone")}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setBatch(true)}
+                  disabled={selectableRooms.length === 0}
+                  className="text-xs text-gray-500 hover:text-blue-600 disabled:opacity-40"
+                >
+                  ⚙ {t("home.batchBtn")}
+                </button>
+              )}
+            </div>
 
-          <div className="hidden md:flex mt-auto shrink-0 bg-white/70 rounded-xl px-4 py-3 text-xs text-gray-500 flex-wrap gap-x-4 gap-y-1">
+            <div className="flex-1 overflow-y-auto px-2 py-2">
+              {myRooms.length === 0 ? (
+                <p className="text-sm text-gray-500 py-12 text-center">{t("home.recentEmpty")}</p>
+              ) : (
+                <ul className="space-y-1">
+                  {myRooms.map((room) => {
+                    const trashed = room.status === "trashed";
+                    return (
+                      <li key={room.code} className={trashed ? "opacity-60" : undefined}>
+                        <div className="group flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors">
+                          {batch && !trashed && !room.isOwner && (
+                            <input
+                              type="checkbox"
+                              checked={selected.has(room.code)}
+                              onChange={() => toggleSelect(room.code)}
+                              className="shrink-0 size-5 accent-blue-600"
+                              aria-label={room.name || room.code}
+                            />
+                          )}
+                          <button
+                            onClick={() => !batch && !trashed && void enterRoom(room.code)}
+                            disabled={batch || trashed}
+                            className="flex-1 min-w-[9rem] flex items-center gap-2 text-left py-1.5 disabled:cursor-default"
+                          >
+                            <span
+                              className={`font-medium truncate ${
+                                activeCode === room.code ? "text-blue-600" : "text-gray-900"
+                              }`}
+                            >
+                              {room.name || t("common.unnamedDoc")}
+                            </span>
+                            <code className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono shrink-0">
+                              {room.code}
+                            </code>
+                          </button>
+                          <span className="text-xs text-gray-500 shrink-0 w-full md:w-auto pl-1 md:pl-0">
+                            {trashed ? (
+                              <span className="text-gray-400">{t("docs.trashedTag")}</span>
+                            ) : room.userCount > 0 ? (
+                              <span className="text-green-600">
+                                ● {t("home.nOnline", { n: room.userCount })}
+                              </span>
+                            ) : (
+                              <span>
+                                {t("home.lastUsed")} {formatRelative(room.lastUsed, locale)}
+                              </span>
+                            )}
+                          </span>
+                          <div className="flex items-center shrink-0 ml-auto md:ml-0">
+                            {!trashed && (
+                              <button
+                                onClick={() => setQrFor(room.code)}
+                                title={t("home.showQrTitle")}
+                                className="text-gray-500 hover:text-blue-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
+                              >
+                                ▦
+                              </button>
+                            )}
+                            {trashed ? (
+                              <button
+                                onClick={() => leaveSingle(room.code)}
+                                title={t("home.leaveSingleTitle")}
+                                className="text-gray-400 hover:text-gray-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
+                              >
+                                ✕
+                              </button>
+                            ) : room.isOwner ? (
+                              <button
+                                onClick={() => void deleteSingle(room.code)}
+                                title={t("docs.deleteBtnTitle")}
+                                className="text-gray-500 hover:text-red-500 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
+                              >
+                                🗑
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => leaveSingle(room.code)}
+                                title={t("home.leaveSingleTitle")}
+                                className="text-gray-500 hover:text-red-500 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="hidden md:flex shrink-0 bg-white/70 rounded-xl px-4 py-3 text-xs text-gray-500 flex-wrap gap-x-4 gap-y-1">
             <span>🔒 {t("home.featureSyncTitle")}</span>
             <span>📝 {t("home.featureRichTitle")}</span>
             <span>💾 {t("home.offlineWritable")}</span>
-            <span>
-              <ScanIcon className="inline-block size-3.5 align-[-2px]" /> {t("home.scanBtnTitle")}
-            </span>
           </div>
         </section>
 
-        {/* 右栏:我的房间(单页签;在线人数逐行显示) */}
-        <section className="w-full flex-1 bg-white rounded-2xl shadow-lg flex flex-col min-h-0">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
-            <span className="text-sm font-medium text-gray-700">{t("home.myRooms")}</span>
-            {batch ? (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() =>
-                    setSelected(allSelected ? new Set() : new Set(selectableRooms.map((r) => r.code)))
-                  }
-                  className="text-xs text-gray-500 hover:text-blue-600"
-                >
-                  {allSelected ? t("common.cancel") : t("home.selectAll")}
-                </button>
-                <button
-                  onClick={leaveSelected}
-                  disabled={selected.size === 0}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 disabled:opacity-40 transition-colors"
-                >
-                  {t("home.leaveSelected")}
-                  {selected.size > 0 ? ` (${selected.size})` : ""}
-                </button>
-                <button
-                  onClick={() => {
-                    setBatch(false);
-                    setSelected(new Set());
-                  }}
-                  className="text-xs px-2 py-1.5 text-gray-500 hover:text-gray-600"
-                >
-                  {t("home.batchDone")}
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setBatch(true)}
-                disabled={selectableRooms.length === 0}
-                className="text-xs text-gray-500 hover:text-blue-600 disabled:opacity-40"
-              >
-                ⚙ {t("home.batchBtn")}
-              </button>
-            )}
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-2 py-2">
-            {myRooms.length === 0 ? (
-              <p className="text-sm text-gray-500 py-12 text-center">{t("home.recentEmpty")}</p>
-            ) : (
-              <ul className="space-y-1">
-                {myRooms.map((room) => {
-                  const trashed = room.status === "trashed";
-                  return (
-                    <li key={room.code} className={trashed ? "opacity-60" : undefined}>
-                      <div className="group flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors">
-                        {batch && !trashed && !room.isOwner && (
-                          <input
-                            type="checkbox"
-                            checked={selected.has(room.code)}
-                            onChange={() => toggleSelect(room.code)}
-                            className="shrink-0 size-5 accent-blue-600"
-                            aria-label={room.name || room.code}
-                          />
-                        )}
-                        <button
-                          onClick={() => !batch && !trashed && void enterRoom(room.code)}
-                          disabled={batch || trashed}
-                          className="flex-1 min-w-[9rem] flex items-center gap-2 text-left py-1.5 disabled:cursor-default"
-                        >
-                          <span className="font-medium text-gray-900 truncate">
-                            {room.name || t("common.unnamedDoc")}
-                          </span>
-                          <code className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono shrink-0">
-                            {room.code}
-                          </code>
-                        </button>
-                        <span className="text-xs text-gray-500 shrink-0 order-3 md:order-none w-full md:w-auto pl-1 md:pl-0">
-                          {trashed ? (
-                            <span className="text-gray-400">{t("docs.trashedTag")}</span>
-                          ) : room.userCount > 0 ? (
-                            <span className="text-green-600">
-                              ● {t("home.nOnline", { n: room.userCount })}
-                            </span>
-                          ) : (
-                            <span>
-                              {t("home.lastUsed")} {formatRelative(room.lastUsed, locale)}
-                            </span>
-                          )}
-                        </span>
-                        <div className="flex items-center shrink-0 ml-auto md:ml-0">
-                          {!trashed && (
-                            <button
-                              onClick={() => setQrFor(room.code)}
-                              title={t("home.showQrTitle")}
-                              className="text-gray-500 hover:text-blue-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
-                            >
-                              ▦
-                            </button>
-                          )}
-                          {trashed ? (
-                            <button
-                              onClick={() => leaveSingle(room.code)}
-                              title={t("home.leaveSingleTitle")}
-                              className="text-gray-400 hover:text-gray-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
-                            >
-                              ✕
-                            </button>
-                          ) : room.isOwner ? (
-                            <button
-                              onClick={() => void deleteSingle(room.code)}
-                              title={t("docs.deleteBtnTitle")}
-                              className="text-gray-500 hover:text-red-500 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
-                            >
-                              🗑
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => leaveSingle(room.code)}
-                              title={t("home.leaveSingleTitle")}
-                              className="text-gray-500 hover:text-red-500 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+        {/* 右栏:选中文档的原地编辑面板(图9);未选中=占位。移动端 activeCode 时全屏接管 */}
+        <section
+          className={`w-full flex-1 min-h-0 ${
+            activeCode ? "flex" : "hidden md:flex"
+          } flex-col bg-white/60 rounded-2xl shadow-lg overflow-hidden`}
+        >
+          {activeCode && account ? (
+            <DocPane
+              code={activeCode}
+              userName={account.name}
+              userId={account.id}
+              onClose={() => setActiveCode(null)}
+              onUnavailable={handlePaneUnavailable}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center px-6 gap-2">
+              <p className="text-base font-medium text-gray-600">{t("home.paneEmptyTitle")}</p>
+              <p className="text-sm text-gray-400 max-w-sm leading-relaxed">
+                {t("home.paneEmptyDesc")}
+              </p>
+            </div>
+          )}
         </section>
       </main>
 
