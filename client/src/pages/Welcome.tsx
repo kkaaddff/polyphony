@@ -40,7 +40,9 @@ export default function Welcome() {
 
   const app = isTauri();
   const [tab, setTab] = useState<Tab>(app ? "device" : "create");
-  const [server, setServer] = useState(getSavedServer());
+  // Web 下默认填当前实际地址(同源部署=origin,dev=VITE_SERVER_URL),免去手抄;
+  // Tauri 无 origin 概念,保持手填。保存过配置则始终优先展示已保存值。
+  const [server, setServer] = useState(() => getSavedServer() || (app ? "" : getServerBase()));
   const [name, setName] = useState("");
   const [recoveryInput, setRecoveryInput] = useState("");
   const [busy, setBusy] = useState(false);

@@ -20,7 +20,7 @@ This document collects the guardrails for anyone running autonomous or semi-auto
 
 ### Build, Test, and Development Commands
 - Install dependencies with `npm install` in `client/` and `server/` (root package.json is an orchestrator only; `setup.sh` does both).
-- Launch the UI via `npm run dev` (Vite :5173), start the collaboration service with `npm run server` (:3001), or run both together through `npm run dev:all`.
+- Launch the UI via `npm run dev` (Vite :5173), start the collaboration service with `npm run server` (:3001), or run both together through `npm run dev:all`. For phone/App LAN debugging use `npm run dev:lan` (builds the web then serves web+API+WS on ONE port via `STATIC_DIR` — the printed `http://<LAN-IP>:<port>` works in phone browsers, the app, and desktop browsers alike; data in `server/data/`).
 - Production web build is `client/dist/` (Vite). Self-hosting is the all-in-one Docker image (`docker compose up -d`, serves web + WS on one port); server+Web deploys are automated by the private Gitea CI (`.gitea/workflows/deploy.yml`). Desktop/android packages come from GitHub Actions releases, not local builds.
 - `npm run lint` / `npm run build` delegate to `client/` (tsc --noEmit + eslint + vite build); `npm --prefix server test` runs the server unit suite (node:test, 44 tests).
 - Tauri local dev (optional, needs Rust): `cd client && npx tauri dev`; Android: `npm run android:init` (init + manifest patch) then `npm run android:dev`.

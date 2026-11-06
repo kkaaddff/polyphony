@@ -72,7 +72,7 @@ QR 载荷构建（`client/src/lib/qr.ts`）与扫码/粘贴解析（`client/src/
 
 ## 4. 手工多端场景（发布前）
 
-`npm run server` + 两个编辑器标签同文档码；发布前建议完整过一遍：
+局域网联调用 `npm run dev:lan`（单端口同源出 Web+API+WS，手机浏览器/App/桌面共用打印出的地址）；发布前建议完整过一遍：
 桌面 App 直连 IP 编辑 ↔ 手机浏览器扫码进文档 ↔ 内容收敛；断网编辑 → 重连合并（y-indexeddb）；
 Android 真机装 CI 出的 apk：扫文档码进房、欢迎页 pull 码由桌面端批准登录（双向配对真机路径）；
 v3.5.0 覆盖安装后旧 token 自动清理回引导页。
