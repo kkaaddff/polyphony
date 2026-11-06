@@ -101,8 +101,8 @@ export const zh = {
     title: "欢迎使用 Polyphony",
     subtitle: "多个声部，一份总谱。—— 选择一种方式开始",
     createTab: "新建账号",
-    deviceTab: "已有账号 · 配对登录",
-    recoveryTab: "恢复密钥登录",
+    deviceTab: "配对登录",
+    recoveryTab: "密钥登录",
     serverLabel: "服务器地址",
     serverHint: "浏览器打开本站时留空即用当前地址；App 需填写（如 http://IP:9091）",
     nameLabel: "用户名",
@@ -171,6 +171,7 @@ export const zh = {
     gotIt: "知道了",
     nativeStarting: "正在调起原生扫码...",
     nativeFail: "调起扫码失败：{msg}",
+    permDenied: "相机权限被拒绝，请在系统设置中授权后重试，或直接粘贴二维码内容",
     aim: "将二维码对准取景框",
     // 粘贴兜底:相机不可用/HTTPS 缺失时的无相机路径
     pasteLabel: "或粘贴二维码内容 / 链接",

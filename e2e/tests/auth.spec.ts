@@ -47,7 +47,7 @@ test.describe("/welcome 恢复密钥登录", () => {
   test("有效恢复密钥:兑换本机凭据并进入首页", async ({ page }) => {
     const acc = await createAccount();
     await page.goto("/welcome");
-    await page.getByRole("button", { name: "恢复密钥登录" }).click();
+    await page.getByRole("button", { name: "密钥登录" }).click();
     await page.locator("#recoveryKey").fill(acc.recoveryKey);
     await page.getByRole("button", { name: "恢复登录" }).click();
     await expect(page).toHaveURL("/");
@@ -59,7 +59,7 @@ test.describe("/welcome 恢复密钥登录", () => {
 
   test("无效恢复密钥:错误提示停留引导页", async ({ page }) => {
     await page.goto("/welcome");
-    await page.getByRole("button", { name: "恢复密钥登录" }).click();
+    await page.getByRole("button", { name: "密钥登录" }).click();
     await page.locator("#recoveryKey").fill("poly_r_invalid");
     await page.getByRole("button", { name: "恢复登录" }).click();
     await expect(page.getByText("登录信息无效或已失效")).toBeVisible({

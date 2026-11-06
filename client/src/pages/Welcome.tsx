@@ -389,14 +389,18 @@ export default function Welcome() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 pt-[env(safe-area-inset-top)] box-border">
-      <div className="max-w-xl w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">{t("welcome.title")}</h1>
-          <p className="text-sm text-gray-600">{t("welcome.subtitle")}</p>
-        </div>
+    // 标题固定顶部、卡片区中间滚动:软键盘弹出(resizes-content)压缩视口时,
+    // 垂直居中布局会把标题顶出屏幕(实踩)——改为 flex-col + 内部 overflow-y-auto,
+    // 内容整体推高(贴顶而非居中)。
+    <div className="h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col pt-[env(safe-area-inset-top)] box-border overflow-hidden">
+      <div className="text-center pt-6 pb-4 px-4 shrink-0">
+        <h1 className="text-4xl font-bold text-gray-900 mb-2">{t("welcome.title")}</h1>
+        <p className="text-sm text-gray-600">{t("welcome.subtitle")}</p>
+      </div>
 
-        <div className="bg-white rounded-2xl shadow-2xl p-8 space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
+        <div className="max-w-xl w-full mx-auto">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 space-y-6">
           <div className="flex gap-2">
             {tabs.map((x) => (
               <button
@@ -548,6 +552,7 @@ export default function Welcome() {
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
             />
             <p className="text-xs text-gray-500 mt-2">{t("welcome.serverHint")}</p>
+          </div>
           </div>
         </div>
       </div>

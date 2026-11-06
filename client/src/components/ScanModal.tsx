@@ -7,6 +7,7 @@ import {
   getCameraStream,
   hasNativeScanner,
   nativeScanQr,
+  rejectionMessage,
   stopStream,
 } from "@/platform/scanQr";
 import { useT } from "@/i18n";
@@ -46,13 +47,16 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
         if (text) onResult(text);
         else onClose();
       } catch (e) {
-        // 原生扫码失败不再静默关闭(用户只会觉得「按钮没反应」),显式报错。
-        if (!cancelled && !abandoned.current)
-          setError(
-            t("scanModal.nativeFail", {
-              msg: e instanceof Error ? e.message : String(e),
-            })
-          );
+        if (cancelled || abandoned.current) return;
+        // 失败不再停留在空黑屏(实踩「调起扫码失败:[object Object]」孤零零挂中间):
+        // 立即切粘贴为主入口,错误作为顶部条带展示。
+        const raw = rejectionMessage(e);
+        setError(
+          raw === "ERR_SCAN_PERMISSION"
+            ? t("scanModal.permDenied")
+            : t("scanModal.nativeFail", { msg: raw })
+        );
+        setPasteMode(true);
       }
     })();
     return () => {
@@ -87,11 +91,14 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
         };
         raf = requestAnimationFrame(tick);
       } catch (e) {
-        // ERR_NO_CAMERA:环境无 getUserMedia(http:// 直连等),走本地化文案;
-        // 其余(权限拒绝等)透传浏览器消息。无摄像头 → 直接切粘贴为主入口。
+        // ERR_NO_CAMERA:环境无 getUserMedia(http:// 直连等)→ 切粘贴为主入口(无错误条);
+        // 其余(权限拒绝等)透传浏览器消息,同样落到粘贴视图顶部条带。
         const msg = e instanceof Error ? e.message : "";
         if (msg === "ERR_NO_CAMERA") setPasteMode(true);
-        else setError(msg || t("scanModal.cameraFallback"));
+        else {
+          setError(msg || t("scanModal.cameraFallback"));
+          setPasteMode(true);
+        }
       }
     })();
 
@@ -135,19 +142,13 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-4">
-      {error ? (
-        <div className="text-center space-y-4 w-full flex flex-col items-center">
-          <p className="text-red-400 text-sm">{error}</p>
-          {pasteBox}
-          <button
-            onClick={onClose}
-            className="px-6 py-2 rounded-lg bg-white text-gray-900 text-sm font-medium"
-          >
-            {t("scanModal.gotIt")}
-          </button>
-        </div>
-      ) : pasteMode ? (
+      {pasteMode ? (
         <div className="w-full flex flex-col items-center gap-4">
+          {error && (
+            <p className="max-w-sm text-red-400 text-sm text-center leading-relaxed break-words">
+              {error}
+            </p>
+          )}
           {pasteBox}
           <button
             onClick={onClose}

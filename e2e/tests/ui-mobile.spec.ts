@@ -89,12 +89,12 @@ test.describe("/welcome(移动)", () => {
     await expect(page.getByRole("heading", { name: "欢迎使用 Polyphony" })).toBeVisible();
     await expectNoBreakout(page);
     await expectButtonsInView(page);
-    await expectTapSize(page, ["新建账号", "已有账号 · 配对登录", "恢复密钥登录"]);
+    await expectTapSize(page, ["新建账号", "配对登录", "密钥登录"]);
   });
 
   test("配对页签:本机二维码 + 扫码按钮,不破版", async ({ page }) => {
     await page.goto("/welcome");
-    await page.getByRole("button", { name: /已有账号/ }).click();
+    await page.getByRole("button", { name: /配对登录/ }).click();
     // 服务端返回本机码后渲染二维码(canvas)与剩余时间
     await expect(page.getByText(/剩余 \d+:\d{2}/)).toBeVisible({ timeout: 10_000 });
     await expect(page.locator("canvas")).toBeVisible();
@@ -104,7 +104,7 @@ test.describe("/welcome(移动)", () => {
 
   test("恢复密钥页签:输入框可聚焦,不破版", async ({ page }) => {
     await page.goto("/welcome");
-    await page.getByRole("button", { name: "恢复密钥登录" }).click();
+    await page.getByRole("button", { name: "密钥登录" }).click();
     await expect(page.locator("#recoveryKey")).toBeVisible();
     await expectNoBreakout(page);
   });

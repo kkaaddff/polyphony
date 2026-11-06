@@ -313,13 +313,6 @@ export default function Home() {
       {/* 主体:桌面双栏一屏;移动单列纵排(列表内部滚动) */}
       <main className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 px-4 md:px-6 pb-4 md:pb-6 pt-3 min-h-0">
         <section className="w-full md:w-2/5 md:max-w-sm flex flex-col gap-3 md:gap-4 min-h-0 shrink-0">
-          <button
-            onClick={() => void handleCreateNew()}
-            className="shrink-0 h-16 md:h-28 rounded-xl md:rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-base md:text-lg font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow-lg flex items-center justify-center gap-2"
-          >
-            <span className="text-xl md:text-2xl">＋</span> {t("home.createBtn")}
-          </button>
-
           <form
             onSubmit={handleJoinRoom}
             className="shrink-0 bg-white rounded-2xl shadow-lg p-4 space-y-3"
@@ -354,6 +347,14 @@ export default function Home() {
               </button>
             </div>
           </form>
+
+          {/* 创建:次要动作放加入表单之下(原来是顶栏式巨块,v4.0 评审:太占首屏) */}
+          <button
+            onClick={() => void handleCreateNew()}
+            className="shrink-0 w-full py-2.5 min-h-tap-44 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow flex items-center justify-center gap-1.5"
+          >
+            <span>＋</span> {t("home.createBtn")}
+          </button>
 
           <div className="hidden md:flex mt-auto shrink-0 bg-white/70 rounded-xl px-4 py-3 text-xs text-gray-500 flex-wrap gap-x-4 gap-y-1">
             <span>🔒 {t("home.featureSyncTitle")}</span>

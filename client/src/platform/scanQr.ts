@@ -11,11 +11,35 @@ export function hasNativeScanner(): boolean {
 
 /** 原生全屏扫码（插件，仅移动端编入）；取消返回 null，识别返回内容字符串。 */
 export async function nativeScanQr(): Promise<string | null> {
-  const { scan, Format } = await import(
+  const { scan, Format, checkPermissions, requestPermissions } = await import(
     "@tauri-apps/plugin-barcode-scanner"
   );
+  // Android 6.0+ CAMERA 是运行时权限:未授权时 scan() 直接 reject(普通对象非 Error,
+  // 实踩显示成 [object Object])——必须先请求权限。v2.5 API:PermissionState 字符串。
+  let perm = await checkPermissions();
+  if (perm !== "granted") {
+    perm = await requestPermissions();
+  }
+  if (perm !== "granted") {
+    throw new Error("ERR_SCAN_PERMISSION");
+  }
   const result = await scan({ formats: [Format.QRCode], windowed: false });
   return result?.content ?? null;
+}
+
+/** 任意 rejection → 人类可读文案(插件 reject 的是普通对象,直接 String() 会变 [object Object])。 */
+export function rejectionMessage(e: unknown): string {
+  if (typeof e === "string" && e) return e;
+  const o = e as { message?: unknown; msg?: unknown } | null;
+  if (o && typeof o === "object") {
+    const m = o.message ?? o.msg;
+    if (typeof m === "string" && m) return m;
+  }
+  try {
+    return JSON.stringify(e) || String(e);
+  } catch {
+    return String(e);
+  }
 }
 
 export async function getCameraStream(): Promise<MediaStream> {
