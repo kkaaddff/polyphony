@@ -417,23 +417,6 @@ export default function Welcome() {
             ))}
           </div>
 
-          <div>
-            <label htmlFor="server" className="block text-sm font-medium text-gray-700 mb-2">
-              {t("welcome.serverLabel")}
-            </label>
-            <input
-              id="server"
-              type="text"
-              value={server}
-              onChange={(e) => setServer(e.target.value)}
-              placeholder="https://docs.example.com"
-              spellCheck={false}
-              autoComplete="off"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
-            />
-            <p className="text-xs text-gray-500 mt-2">{t("welcome.serverHint")}</p>
-          </div>
-
           {tab === "create" && (
             <div className="space-y-4">
               <div>
@@ -548,6 +531,24 @@ export default function Welcome() {
               {error}
             </div>
           )}
+
+          {/* 服务器地址:次要配置放卡片底部(Web 已默认填充当前地址;二维码/主操作优先占首屏) */}
+          <div className="border-t border-gray-100 pt-5">
+            <label htmlFor="server" className="block text-sm font-medium text-gray-700 mb-2">
+              {t("welcome.serverLabel")}
+            </label>
+            <input
+              id="server"
+              type="text"
+              value={server}
+              onChange={(e) => setServer(e.target.value)}
+              placeholder="https://docs.example.com"
+              spellCheck={false}
+              autoComplete="off"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
+            />
+            <p className="text-xs text-gray-500 mt-2">{t("welcome.serverHint")}</p>
+          </div>
         </div>
       </div>
 
