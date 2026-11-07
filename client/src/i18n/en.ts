@@ -201,10 +201,8 @@ export const en = {
     waitingYou: "Waiting for you",
     approveBtn: "Approve",
     denyBtn: "Deny",
-    waitingScan: "Waiting for the new device",
     deviceOnline: "Device signed in",
     waitingOnline: "Approved · waiting for device",
-    cancelBtn: "Cancel",
   },
 
   pairPage: {

@@ -201,10 +201,8 @@ export const zh = {
     waitingYou: "等待你确认",
     approveBtn: "批准",
     denyBtn: "拒绝",
-    waitingScan: "等待新设备扫码",
     deviceOnline: "该设备已登录",
     waitingOnline: "已批准 · 等待设备上线",
-    cancelBtn: "撤销",
   },
 
   // 配对落地页 /pair:push 认领流 + pull 批准流

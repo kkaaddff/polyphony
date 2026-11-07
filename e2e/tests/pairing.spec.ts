@@ -1,4 +1,4 @@
-// 配对登录 v2(docs/identity-and-sharing.md §4.6):push 链接全流程/拒绝/撤销/双开,
+// 配对登录 v2(docs/identity-and-sharing.md §4.6):push 链接全流程/拒绝/关闭撤销/双开,
 // pull 已登录设备批准页。双 browser context 走 /pair URL(不碰摄像头)。
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { randomBytes } from "node:crypto";
@@ -88,11 +88,12 @@ test.describe("配对登录 push(链接)", () => {
     await expect(page2.getByText("登录已被拒绝")).toBeVisible({ timeout: 5000 });
     expect(await page2.evaluate(() => localStorage.getItem("polyphony.token"))).toBeNull();
     // 一次只有一个配对:拒绝即结束本次,发起端自动换出新码继续等待
-    await expect(page1.getByText("等待新设备扫码")).toBeVisible({ timeout: 5000 });
-    await expect(page1.getByText(/剩余 \d+:\d{2}/)).toBeVisible();
+    await expect(page1.getByText(/剩余 \d+:\d{2}/)).toBeVisible({ timeout: 5000 });
+    await expect(page1.getByRole("button", { name: "批准", exact: true })).toHaveCount(0);
+    await expect(page1.locator("canvas")).toBeVisible();
   });
 
-  test("撤销:claim 后发起端撤销,新设备显示已被撤销", async ({ browser }) => {
+  test("关闭弹窗即撤销未完成的配对:新设备显示已被撤销", async ({ browser }) => {
     const { page: page1 } = await openPairModal(browser);
     const url = await generateLink(page1);
 
@@ -102,15 +103,15 @@ test.describe("配对登录 push(链接)", () => {
     await page2.getByRole("button", { name: "在此设备登录" }).click();
     await expect(page2.getByRole("heading", { name: "请在发起设备上确认" })).toBeVisible();
 
-    // 无列表:唯一在途码的「撤销」= 撤销并立即重建(取消就重新开始)
-    await expect(page1.getByRole("button", { name: "撤销" })).toBeVisible({ timeout: 5000 });
-    await page1.getByRole("button", { name: "撤销" }).click();
+    // 未扫码时没有任何状态条/撤销按钮;只有扫码后才有授权入口
+    await expect(page1.getByRole("button", { name: "批准", exact: true })).toBeVisible({
+      timeout: 5000,
+    });
+    // 关闭弹窗 = 放弃本次配对(未批准的码立即作废,重开换新码)
+    await page1.getByRole("button", { name: "关闭" }).click();
 
     await expect(page2.getByText("配对已被撤销")).toBeVisible({ timeout: 5000 });
     expect(await page2.evaluate(() => localStorage.getItem("polyphony.token"))).toBeNull();
-    // 撤销后立刻回到「等待新设备扫码」,且二维码仍在
-    await expect(page1.getByText("等待新设备扫码")).toBeVisible({ timeout: 5000 });
-    await expect(page1.locator("canvas")).toBeVisible();
   });
 
   test("双开:同码第二个设备打不开登录按钮,提示已被使用", async ({ browser }) => {
