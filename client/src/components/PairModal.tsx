@@ -1,6 +1,6 @@
-// 「登录新设备」弹窗(v2 复用版,docs/identity-and-sharing.md §4.6):
-// 一个配对码同时呈现二维码与链接(qr/link 不再分成两条记录,v4.0 联调反馈),
-// TTL 5/15/30/60 分钟档;列表展示本账号全部未清扫配对(批准/拒绝/撤销)。
+// 「登录新设备」弹窗(v4.0 联调反馈:一次只保留一个配对,不列历史):
+// 一个配对码同时呈现二维码与链接;新设备扫码后原地显示「批准/拒绝」;
+// 「取消」= 撤销当前码并立即重建(不再留一串已撤销记录)。
 import { useEffect, useRef, useState } from "react";
 import { buildPairUrl, renderQr } from "@/lib/qr";
 import { copyText } from "@/lib/clipboard";
@@ -46,10 +46,24 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // 无在途配对时自动创建;过期自动重建(被扫过的码留在列表里显示终态)。
+  const expired = !!pairing && now >= pairing.expiresAt;
+  const activePairing = pairing && !expired ? pairing : null;
+
+  // 当前配对在服务端的状态(由 Home 每秒刷新的 pairings 带入);
+  // 列表里没有它 = 刚创建还没刷到,按等待扫码处理。
+  const mine = activePairing
+    ? pairings.find((p) => p.code === activePairing.code)
+    : undefined;
+  const status = mine?.status ?? "pending";
+
+  // 被拒/被撤销 = 本次结束:清掉当前码,effect 随即生成新的(始终只有一个在途码)
+  useEffect(() => {
+    if (status === "denied" || status === "cancelled") setPairing(null);
+  }, [status]);
+
+  // 只有一个在途码:没有/过期/被拒/已撤销 → 立即重建。
   // 在途用 ref 防重入 —— 若把 busy 放进依赖,首轮 effect 的 cleanup 会把
   // 刚创建的结果作废,形成「创建→作废→再创建」风暴(挤爆每账号 3 个配对)。
-  const activePairing = pairing && now < pairing.expiresAt ? pairing : null;
   const creatingRef = useRef(false);
   useEffect(() => {
     if (activePairing || creatingRef.current) return;
@@ -72,10 +86,19 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
     }
   }, [activePairing]);
 
-  // 换 TTL 档 → 重建配对(当前码整体作废,撤销语义一致)
+  // 撤销当前码(服务端置 cancelled,新设备侧立刻显示已撤销),再重建一个
+  const restart = () => {
+    const old = pairing?.code;
+    setPairing(null);
+    setCopied(false);
+    if (old) void cancelPairing(old).catch(() => undefined).finally(refresh);
+    else refresh();
+  };
+
+  // 换 TTL 档 = 撤销当前码并按新时长重建
   const changeTtl = (m: number) => {
     setLinkTtl(m);
-    setPairing(null);
+    restart();
   };
 
   const copy = async () => {
@@ -86,21 +109,13 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
     }
   };
 
-  const decide = async (code: string, accept: boolean) => {
+  const decide = async (accept: boolean) => {
+    if (!activePairing) return;
     try {
-      await approvePairing(code, accept);
-      refresh();
+      await approvePairing(activePairing.code, accept);
     } catch {
-      refresh();
-    }
-  };
-
-  const cancel = async (code: string) => {
-    try {
-      await cancelPairing(code);
-      if (pairing?.code === code) setPairing(null);
-      refresh();
-    } catch {
+      /* 过期等:刷新后由 status 驱动重建 */
+    } finally {
       refresh();
     }
   };
@@ -118,14 +133,14 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
 
         {/* 二维码 + 链接:同一个配对码的两种形态(TTL 档可换,换档即重建) */}
         <section className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="text-sm font-medium text-gray-700">{t("pair.qrTitle")}</p>
             <div className="flex gap-1" role="radiogroup" aria-label={t("pair.linkTitle")}>
               {LINK_TTL_MINUTES.map((m) => (
                 <button
                   key={m}
                   onClick={() => changeTtl(m)}
-                  className={`px-2 py-1 rounded-md text-xs border transition-colors ${
+                  className={`px-2 py-1 rounded-md text-xs border whitespace-nowrap transition-colors ${
                     linkTtl === m
                       ? "bg-blue-50 border-blue-400 text-blue-700"
                       : "border-gray-300 text-gray-600 hover:bg-gray-50"
@@ -168,69 +183,46 @@ export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
           )}
         </section>
 
-        {/* 未清扫配对列表:claimed 待确认(红点来源);approved 等上线;终态可复盘 */}
-        {pairings.length > 0 && (
-          <section className="space-y-2 border-t border-gray-100 pt-4">
-            <p className="text-sm font-medium text-gray-700">{t("pair.listTitle")}</p>
-            <ul className="space-y-2">
-              {pairings.map((p) => (
-                <li
-                  key={p.code}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm space-y-1"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-gray-700 truncate">
-                      {p.direction === "pull" ? t("pair.dirPull") : t("pair.dirPush")}
-                      {p.newcomerLabel ? ` · ${p.newcomerLabel}` : ""}
-                    </span>
-                    <span className="text-xs text-gray-400 shrink-0">
-                      {now < p.expiresAt ? formatRemain(p.expiresAt, now) : t("pair.expired")}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {p.status === "claimed" && (
-                      <>
-                        <span className="text-xs text-amber-600">{t("pair.waitingYou")}</span>
-                        <button
-                          onClick={() => void decide(p.code, true)}
-                          className="px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
-                        >
-                          {t("pair.approveBtn")}
-                        </button>
-                        <button
-                          onClick={() => void decide(p.code, false)}
-                          className="px-3 py-1 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50"
-                        >
-                          {t("pair.denyBtn")}
-                        </button>
-                      </>
-                    )}
-                    {p.status === "pending" && p.direction === "push" && (
-                      <span className="text-xs text-gray-500">{t("pair.waitingScan")}</span>
-                    )}
-                    {p.status === "approved" && (
-                      <span className={`text-xs ${p.deviceOnline ? "text-green-600" : "text-gray-500"}`}>
-                        {p.deviceOnline ? `✓ ${t("pair.deviceOnline")}` : t("pair.waitingOnline")}
-                      </span>
-                    )}
-                    {(p.status === "pending" || p.status === "claimed" || p.status === "approved") &&
-                      p.direction === "push" && (
-                        <button
-                          onClick={() => void cancel(p.code)}
-                          className="px-3 py-1 rounded-lg border border-red-200 text-red-600 text-xs font-medium hover:bg-red-50"
-                        >
-                          {t("pair.cancelBtn")}
-                        </button>
-                      )}
-                    {(p.status === "denied" || p.status === "cancelled") && (
-                      <span className="text-xs text-gray-400">
-                        {p.status === "denied" ? t("pairPage.deniedTitle") : t("pairPage.cancelledTitle")}
-                      </span>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+        {/* 当前这一个配对的即时状态:待扫码 / 待你确认 / 已批准。不列历史。 */}
+        {activePairing && (
+          <section className="border-t border-gray-100 pt-4 space-y-2">
+            {status === "claimed" ? (
+              <>
+                <p className="text-sm text-amber-600">
+                  {t("pair.waitingYou")}
+                  {mine?.newcomerLabel ? ` · ${mine.newcomerLabel}` : ""}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => void decide(true)}
+                    className="flex-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                  >
+                    {t("pair.approveBtn")}
+                  </button>
+                  <button
+                    onClick={() => void decide(false)}
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-gray-600 text-sm font-medium hover:bg-gray-50"
+                  >
+                    {t("pair.denyBtn")}
+                  </button>
+                </div>
+              </>
+            ) : status === "approved" ? (
+              <p className={`text-sm ${mine?.deviceOnline ? "text-green-600" : "text-gray-600"}`}>
+                {mine?.deviceOnline
+                  ? `✓ ${t("pair.deviceOnline")}`
+                  : t("pair.waitingOnline")}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500">{t("pair.waitingScan")}</p>
+            )}
+            {/* 取消 = 撤销当前码并立即重建一个(一次只有一个配对任务) */}
+            <button
+              onClick={restart}
+              className="w-full px-3 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50"
+            >
+              {t("pair.cancelBtn")}
+            </button>
           </section>
         )}
 

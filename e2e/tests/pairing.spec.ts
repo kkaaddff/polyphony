@@ -87,8 +87,9 @@ test.describe("配对登录 push(链接)", () => {
 
     await expect(page2.getByText("登录已被拒绝")).toBeVisible({ timeout: 5000 });
     expect(await page2.evaluate(() => localStorage.getItem("polyphony.token"))).toBeNull();
-    // 发起端列表项落到「登录已被拒绝」终态
-    await expect(page1.getByText("登录已被拒绝", { exact: true })).toBeVisible({ timeout: 5000 });
+    // 一次只有一个配对:拒绝即结束本次,发起端自动换出新码继续等待
+    await expect(page1.getByText("等待新设备扫码")).toBeVisible({ timeout: 5000 });
+    await expect(page1.getByText(/剩余 \d+:\d{2}/)).toBeVisible();
   });
 
   test("撤销:claim 后发起端撤销,新设备显示已被撤销", async ({ browser }) => {
@@ -101,15 +102,15 @@ test.describe("配对登录 push(链接)", () => {
     await page2.getByRole("button", { name: "在此设备登录" }).click();
     await expect(page2.getByRole("heading", { name: "请在发起设备上确认" })).toBeVisible();
 
-    // 列表含 QR(pending)与链接(claimed)两项,撤销要落在「链接」那一行
-    const linkRow = page1.locator("li", { hasText: "本机发起" }).first();
-    await expect(linkRow.getByRole("button", { name: "撤销" })).toBeVisible({
-      timeout: 5000,
-    });
-    await linkRow.getByRole("button", { name: "撤销" }).click();
+    // 无列表:唯一在途码的「撤销」= 撤销并立即重建(取消就重新开始)
+    await expect(page1.getByRole("button", { name: "撤销" })).toBeVisible({ timeout: 5000 });
+    await page1.getByRole("button", { name: "撤销" }).click();
 
     await expect(page2.getByText("配对已被撤销")).toBeVisible({ timeout: 5000 });
     expect(await page2.evaluate(() => localStorage.getItem("polyphony.token"))).toBeNull();
+    // 撤销后立刻回到「等待新设备扫码」,且二维码仍在
+    await expect(page1.getByText("等待新设备扫码")).toBeVisible({ timeout: 5000 });
+    await expect(page1.locator("canvas")).toBeVisible();
   });
 
   test("双开:同码第二个设备打不开登录按钮,提示已被使用", async ({ browser }) => {
