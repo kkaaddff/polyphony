@@ -69,6 +69,8 @@ export default function Welcome() {
     expiresAt: number;
   } | null>(null);
   const [pullBusy, setPullBusy] = useState(false);
+  const [pullError, setPullError] = useState<"needServer" | "network" | "">("");
+  const pullAttempts = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => () => { pairStopped.current = true; }, []);
@@ -83,12 +85,25 @@ export default function Welcome() {
 
   const refreshPull = async () => {
     setPullBusy(true);
+    setPullError("");
     try {
-      const base = getServerBase();
-      const r = await requestPullPairing(base);
+      // App 且未配置服务器:getServerBase() 回落 WebView 内部 origin,请求必败——
+      // 与其静默只剩「刷新」(实踩),先给填写指引
+      const hasExplicit =
+        !!getSavedServer() ||
+        !!new URLSearchParams(window.location.search).get("server") ||
+        !!import.meta.env.VITE_SERVER_URL;
+      if (app && !hasExplicit) {
+        setPull(null);
+        setPullError("needServer");
+        return;
+      }
+      const r = await requestPullPairing(getServerBase());
       setPull(r);
+      pullAttempts.current = 0;
     } catch {
       setPull(null);
+      setPullError("network");
     } finally {
       setPullBusy(false);
     }
@@ -98,6 +113,16 @@ export default function Welcome() {
     if (tab !== "device" || pairView) return;
     void refreshPull();
   }, [tab, pairView]);
+
+  // 瞬时失败(如 Android 17 首次启动的「本地网络」权限弹窗还没点、服务刚起)自动重试,
+  // 最多 6 次;成功即复位。避免用户停在「生成失败」而必须手点刷新。
+  useEffect(() => {
+    if (tab !== "device" || pairView || pull || pullError !== "network") return;
+    if (pullAttempts.current >= 6) return;
+    pullAttempts.current += 1;
+    const id = window.setTimeout(() => void refreshPull(), 2500);
+    return () => window.clearTimeout(id);
+  }, [tab, pairView, pull, pullError]);
 
   // pull 轮询:1.5s→30s 后 5s;tab 隐藏时暂停(资源与滥用面)
   useEffect(() => {
@@ -243,6 +268,12 @@ export default function Welcome() {
   };
 
   // ---------- 创建 / 恢复密钥 ----------
+
+  // 服务器地址失焦:固化配置;配对页签下重建本机二维码(填完地址立刻有码)
+  const handleServerBlur = () => {
+    saveServer(server);
+    if (tab === "device" && !pairView) void refreshPull();
+  };
 
   const handleCreate = async () => {
     setBusy(true);
@@ -409,6 +440,7 @@ export default function Welcome() {
                   setTab(x.key);
                   setError("");
                   setRecoveryError(null);
+                  pullAttempts.current = 0;
                 }}
                 className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
                   tab === x.key
@@ -462,16 +494,27 @@ export default function Welcome() {
                         {t("welcome.pullRemain", { time: formatRemain(pull.expiresAt, now) })}
                       </p>
                     </>
+                  ) : pullError === "needServer" ? (
+                    <p className="text-sm text-amber-600 leading-relaxed px-2">
+                      {t("welcome.pullNeedServer")}
+                    </p>
                   ) : (
-                    <button
-                      onClick={() => void refreshPull()}
-                      disabled={pullBusy}
-                      className="text-sm text-blue-600 hover:underline disabled:opacity-50"
-                    >
-                      {pullBusy ? "…" : t("welcome.pullRefresh")}
-                    </button>
+                    <div className="space-y-2">
+                      {pullError === "network" && (
+                        <p className="text-sm text-red-600">{t("welcome.pullErr")}</p>
+                      )}
+                      <button
+                        onClick={() => void refreshPull()}
+                        disabled={pullBusy}
+                        className="text-sm text-blue-600 hover:underline disabled:opacity-50"
+                      >
+                        {pullBusy ? "…" : t("welcome.pullRefresh")}
+                      </button>
+                    </div>
                   )}
-                  <p className="text-xs text-gray-500 leading-relaxed">{t("welcome.pullHint")}</p>
+                  {!pullError && (
+                    <p className="text-xs text-gray-500 leading-relaxed">{t("welcome.pullHint")}</p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -546,6 +589,7 @@ export default function Welcome() {
               type="text"
               value={server}
               onChange={(e) => setServer(e.target.value)}
+              onBlur={handleServerBlur}
               placeholder="https://docs.example.com"
               spellCheck={false}
               autoComplete="off"

@@ -141,6 +141,8 @@ export const en = {
     pullRemain: "{time} left",
     pullRefresh: "Refresh",
     pullHint: "On a signed-in device, scan this code with \"Scan QR\" or any camera; once approved, this device signs in automatically.",
+    pullNeedServer: "Fill in the server address below (e.g. http://IP:3001) to generate the pairing QR code",
+    pullErr: "Failed to create the pairing code. Check the server address and network, then retry.",
     serverSaved: "Server address recognized and saved",
   },
 

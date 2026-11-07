@@ -139,6 +139,8 @@ export const zh = {
     pullRemain: "剩余 {time}",
     pullRefresh: "刷新",
     pullHint: "在已登录设备上用「扫码加入」或系统相机扫描此码，确认后本机自动完成登录。",
+    pullNeedServer: "请先在下方填写服务器地址（如 http://IP:3001），填好即可生成配对二维码",
+    pullErr: "配对码生成失败，请检查服务器地址与网络后重试",
     serverSaved: "已识别并保存服务器地址",
   },
 
