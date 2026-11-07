@@ -9,8 +9,13 @@
 //      图标（drawable-v24 vector 前景 + 默认背景）；「三声部辫」自定义自适应层
 //      （icons/android/ 下 mipmap-* + anydpi-v26 的 fg/bg/mono，ADR #32）必须在这里
 //      拷进 gen 工程的 res/，否则 CI 出的 apk 永远是默认图标（v4.0.0 实踩）。
+//   6. ACCESS_LOCAL_NETWORK —— Android 17(API 37)起 WebView 访问局域网 IP 必须持有该
+//      运行时权限；缺失时 WebView 内所有 http://<局域网IP> 请求直接失败
+//      （net::ERR_LOCAL_NETWORK_PERMISSION_MISSING，v4 真机联调实踩）。
+//      清单声明在下面补；运行时申请要写进 MainActivity（同样是生成文件，用本脚本打补丁）。
 // 用法：在 client/ 下 `node scripts/android-patch.mjs`（npm run android:init 会自动带）
-import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const GEN_ANDROID = new URL("../src-tauri/gen/android/", import.meta.url);
 const MANIFEST = new URL("app/src/main/AndroidManifest.xml", GEN_ANDROID);
@@ -51,6 +56,15 @@ if (!xml.includes("android.permission.CAMERA")) {
   patches.push("CAMERA");
 }
 
+// Android 17+ 访问局域网(自部署服务器 IP)所需；低版本系统忽略未知权限声明
+if (!xml.includes("android.permission.ACCESS_LOCAL_NETWORK")) {
+  xml = xml.replace(
+    /<application/,
+    '  <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />\n  <application'
+  );
+  patches.push("ACCESS_LOCAL_NETWORK");
+}
+
 if (!xml.includes("android:usesCleartextTraffic")) {
   xml = xml.replace(
     /<application([^>]*)>/,
@@ -73,6 +87,132 @@ if (!xml.includes('android:windowSoftInputMode="adjustResize"')) {
     patches.push("windowSoftInputMode=adjustResize");
   } else {
     console.warn("android-patch: 未找到 .MainActivity <activity>,跳过 windowSoftInputMode");
+  }
+}
+
+// MainActivity 运行时申请 ACCESS_LOCAL_NETWORK(Android 17+)。文件在 gen 里，同样打补丁而非手改。
+{
+  const javaRoot = new URL("app/src/main/java/", GEN_ANDROID);
+  let activityPath = null;
+  if (existsSync(javaRoot)) {
+    const walk = (dir) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name === "MainActivity.kt") activityPath = p;
+      }
+    };
+    walk(javaRoot.pathname);
+  }
+  if (!activityPath) {
+    console.warn("android-patch: 未找到 MainActivity.kt，跳过本地网络权限申请");
+  } else {
+    const original = readFileSync(activityPath, "utf8");
+    let kt = original;
+    const added = [];
+    // 分段幂等：每段独立检测，重复运行不会叠加
+    const addImports = (names) => {
+      const missing = names
+        .filter((i) => !kt.includes(`import ${i}\n`))
+        .map((i) => `import ${i}\n`)
+        .join("");
+      if (!missing) return;
+      const lastImport = kt.lastIndexOf("\nimport ");
+      const importEnd = kt.indexOf("\n", lastImport + 1);
+      kt = kt.slice(0, importEnd + 1) + missing + kt.slice(importEnd + 1);
+    };
+    const insertAtClassEnd = (snippet) => {
+      const lastBrace = kt.lastIndexOf("}");
+      kt = kt.slice(0, lastBrace) + snippet + kt.slice(lastBrace);
+    };
+
+    if (!kt.includes("super.onCreate(savedInstanceState)")) {
+      console.warn("android-patch: MainActivity 结构意外，跳过本地网络权限申请");
+    } else {
+      addImports([
+        "android.Manifest",
+        "android.content.pm.PackageManager",
+        "android.os.Build",
+        "android.widget.Toast",
+      ]);
+      if (!kt.includes("requestLocalNetworkPermission()")) {
+        kt = kt.replace(
+          "    super.onCreate(savedInstanceState)\n",
+          "    super.onCreate(savedInstanceState)\n    requestLocalNetworkPermission()\n"
+        );
+        added.push("调用");
+      }
+      if (!kt.includes("fun requestLocalNetworkPermission")) {
+        insertAtClassEnd(
+          [
+            "",
+            "  // Android 17(API 37)+：WebView 访问局域网服务器所需运行时权限，缺失会导致所有请求失败",
+            "  private fun requestLocalNetworkPermission() {",
+            "    if (Build.VERSION.SDK_INT < 37) return",
+            "    if (checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) ==",
+            "      PackageManager.PERMISSION_GRANTED",
+            "    ) return",
+            "    requestPermissions(arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK), 0x4c4e)",
+            "  }",
+            "",
+          ].join("\n")
+        );
+        added.push("申请方法");
+      }
+      if (!kt.includes("onRequestPermissionsResult")) {
+        insertAtClassEnd(
+          [
+            "",
+            "  // 拒绝时明确告知：否则页面只会表现为「网络失败」，用户无从下手",
+            "  override fun onRequestPermissionsResult(",
+            "    requestCode: Int,",
+            "    permissions: Array<String>,",
+            "    grantResults: IntArray",
+            "  ) {",
+            "    super.onRequestPermissionsResult(requestCode, permissions, grantResults)",
+            "    if (requestCode == 0x4c4e && grantResults.isNotEmpty() &&",
+            "      grantResults[0] != PackageManager.PERMISSION_GRANTED",
+            "    ) {",
+            '      Toast.makeText(this, "未获得本地网络权限，将无法连接自建服务器；可在系统设置中开启", Toast.LENGTH_LONG).show()',
+            "    }",
+            "  }",
+            "",
+          ].join("\n")
+        );
+        added.push("拒绝提示");
+      }
+      // 冷启动「首次点输入框不弹键盘」(v4 实踩):启动时系统权限弹窗抢走窗口焦点,
+      // 回到 Activity 后 WebView 没重新拿 View 焦点,IME 无服务对象(mServedView=null)。
+      // 窗口焦点回来时把焦点还给 WebView。
+      if (!kt.includes("onWindowFocusChanged")) {
+        insertAtClassEnd(
+          [
+            "",
+            "  override fun onWindowFocusChanged(hasFocus: Boolean) {",
+            "    super.onWindowFocusChanged(hasFocus)",
+            "    if (hasFocus) {",
+            "      val content = findViewById<android.view.ViewGroup>(android.R.id.content)",
+            "      findWebView(content)?.let { if (!it.hasFocus()) it.requestFocus() }",
+            "    }",
+            "  }",
+            "",
+            "  private fun findWebView(v: android.view.View?): android.webkit.WebView? {",
+            "    if (v is android.webkit.WebView) return v",
+            "    if (v is android.view.ViewGroup) {",
+            "      for (i in 0 until v.childCount) findWebView(v.getChildAt(i))?.let { return it }",
+            "    }",
+            "    return null",
+            "  }",
+            "",
+          ].join("\n")
+        );
+        added.push("焦点归还");
+      }
+      if (kt !== original) {
+        writeFileSync(activityPath, kt);
+        patches.push(`MainActivity(${added.join("+") || "imports"})`);
+      }
+    }
   }
 }
 

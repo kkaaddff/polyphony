@@ -33,6 +33,8 @@ need "adb(平台工具)"        test -x "$HOME/Library/Android/sdk/platform-tool
 export JAVA_HOME="$(brew --prefix openjdk@17)"
 export PATH="$JAVA_HOME/bin:$HOME/Library/Android/sdk/platform-tools:$PATH"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
+# crates.io 偶发 SSL 断连(实踩过一次,直接 code 101):拉长重试次数
+export CARGO_NET_RETRY=10
 
 # debug 签名与 CI 同源(ADR #28):secrets 备份 → ~/.android/debug.keystore
 mkdir -p "$HOME/.android"
