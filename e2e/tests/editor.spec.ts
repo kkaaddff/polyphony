@@ -156,10 +156,8 @@ test.describe("所有者操作(v4)", () => {
     await page.getByRole("button", { name: "删除" }).click();
     await expect(page).toHaveURL("/", { timeout: 10_000 });
     expect(dialogs.some((m) => m.includes("回收站"))).toBe(true);
-    // 首页列表显示回收站标记
-    await expect(page.getByText("回收站", { exact: true }).first()).toBeVisible({
-      timeout: 10_000,
-    });
+    // 主列表只放 active 文档:删除后列表清空(回收站行不混排,v4 联调反馈)
+    await expect(page.getByText("还没有打开过的文档")).toBeVisible({ timeout: 10_000 });
   });
 });
 

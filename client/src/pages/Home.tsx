@@ -277,7 +277,8 @@ export default function Home() {
     };
   }, []);
 
-  const selectableRooms = myRooms.filter((r) => r.status === "active" && !r.isOwner);
+  const activeRooms = myRooms.filter((r) => r.status === "active");
+  const selectableRooms = activeRooms.filter((r) => !r.isOwner);
   const allSelected = selectableRooms.length > 0 && selected.size === selectableRooms.length;
 
   return (
@@ -424,16 +425,17 @@ export default function Home() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-2 py-2">
-              {myRooms.length === 0 ? (
+              {/* 主列表只放 active 文档:回收站内容走头像菜单的回收站弹窗(恢复/清理都在那)。
+                  混排一列灰显「未命名文档·回收站」对用户全是噪音(v4 联调实踩)。 */}
+              {activeRooms.length === 0 ? (
                 <p className="text-sm text-gray-500 py-12 text-center">{t("home.recentEmpty")}</p>
               ) : (
                 <ul className="space-y-1">
-                  {myRooms.map((room) => {
-                    const trashed = room.status === "trashed";
+                  {activeRooms.map((room) => {
                     return (
-                      <li key={room.code} className={trashed ? "opacity-60" : undefined}>
+                      <li key={room.code}>
                         <div className="group flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors">
-                          {batch && !trashed && !room.isOwner && (
+                          {batch && !room.isOwner && (
                             <input
                               type="checkbox"
                               checked={selected.has(room.code)}
@@ -443,8 +445,8 @@ export default function Home() {
                             />
                           )}
                           <button
-                            onClick={() => !batch && !trashed && void enterRoom(room.code)}
-                            disabled={batch || trashed}
+                            onClick={() => !batch && void enterRoom(room.code)}
+                            disabled={batch}
                             className="flex-1 min-w-[9rem] flex items-center gap-2 text-left py-1.5 disabled:cursor-default"
                           >
                             <span
@@ -459,9 +461,7 @@ export default function Home() {
                             </code>
                           </button>
                           <span className="text-xs text-gray-500 shrink-0 w-full md:w-auto pl-1 md:pl-0">
-                            {trashed ? (
-                              <span className="text-gray-400">{t("docs.trashedTag")}</span>
-                            ) : room.userCount > 0 ? (
+                            {room.userCount > 0 ? (
                               <span className="text-green-600">
                                 ● {t("home.nOnline", { n: room.userCount })}
                               </span>
@@ -472,24 +472,14 @@ export default function Home() {
                             )}
                           </span>
                           <div className="flex items-center shrink-0 ml-auto md:ml-0">
-                            {!trashed && (
-                              <button
-                                onClick={() => setQrFor(room.code)}
-                                title={t("home.showQrTitle")}
-                                className="text-gray-500 hover:text-blue-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
-                              >
-                                ▦
-                              </button>
-                            )}
-                            {trashed ? (
-                              <button
-                                onClick={() => leaveSingle(room.code)}
-                                title={t("home.leaveSingleTitle")}
-                                className="text-gray-400 hover:text-gray-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
-                              >
-                                ✕
-                              </button>
-                            ) : room.isOwner ? (
+                            <button
+                              onClick={() => setQrFor(room.code)}
+                              title={t("home.showQrTitle")}
+                              className="text-gray-500 hover:text-blue-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
+                            >
+                              ▦
+                            </button>
+                            {room.isOwner ? (
                               <button
                                 onClick={() => void deleteSingle(room.code)}
                                 title={t("docs.deleteBtnTitle")}

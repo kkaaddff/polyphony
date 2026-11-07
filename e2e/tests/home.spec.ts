@@ -109,17 +109,18 @@ test.describe("我的文档(成员登记)", () => {
     await expect(page.getByTitle("退出该文档")).toHaveCount(0);
     await expect(page.getByTitle("删除文档（移入回收站）")).toHaveCount(1);
 
-    // 删除(进回收站) → 行灰显带「回收站」标记 → ✕ 移出列表后清空
+    // 删除(进回收站) → 主列表只放 active 文档:行直接消失,空态出现;
+    // 回收站行不再混排进列表(v4 联调反馈「一列未命名·回收站全是噪音」)
     page.once("dialog", (d) => d.accept());
     await page.getByTitle("删除文档（移入回收站）").click();
-    await expect(page.getByText("回收站", { exact: true }).first()).toBeVisible({
-      timeout: 10_000,
-    });
-    page.once("dialog", (d) => d.accept());
-    await page.getByTitle("退出该文档").click();
-    await expect(page.getByText("还没有打开过的文档")).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.getByText("还没有打开过的文档")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("未命名文档", { exact: true })).toHaveCount(0);
+    // 回收站弹窗里能看到它,可恢复
+    await page.getByTitle("账号菜单").click();
+    await page.getByRole("menuitem", { name: "回收站" }).click();
+    await expect(page.getByRole("heading", { name: "回收站" })).toBeVisible();
+    await page.getByRole("button", { name: "恢复" }).first().click();
+    await expect(page.getByText("未命名文档", { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test("批量退出:加入他人 3 个文档,退出 2 留 1(owner 行不可选不可退)", async ({ page }) => {
@@ -167,10 +168,8 @@ test.describe("我的文档(成员登记)", () => {
     // 所有者行是 🗑(删除进回收站),confirm 自动接受
     page.once("dialog", (d) => d.accept());
     await page.getByTitle("删除文档（移入回收站）").click();
-    // 回收站页签出现该行(灰显 + 回收站标记 + ✕ 移出列表)
-    await expect(page.getByText("回收站", { exact: true }).first()).toBeVisible({
-      timeout: 10_000,
-    });
+    // 主列表只放 active 文档:删除后行消失
+    await expect(page.getByText("待删文档")).toHaveCount(0, { timeout: 10_000 });
 
     // 回收站弹窗:恢复后回到列表
     await page.getByTitle("账号菜单").click();
