@@ -22,7 +22,8 @@
 # client 构建产物与 Tauri
 /client/dist
 /client/src-tauri/target
-/client/src-tauri/gen/schemas
+# tauri 生成的移动端工程(此前仅忽略 gen/schemas,gen/android 一直躺在 untracked)
+/client/src-tauri/gen/
 
 # production
 /build
