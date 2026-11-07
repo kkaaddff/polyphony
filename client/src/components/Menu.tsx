@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useBackHandler } from "@/platform/backButton";
 
 interface MenuProps {
   buttonTitle: string;
@@ -25,6 +26,8 @@ export function Menu({
   children,
 }: MenuProps) {
   const [open, setOpen] = useState(false);
+  // Android 返回键:先收起菜单
+  useBackHandler(open, () => setOpen(false));
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

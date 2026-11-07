@@ -19,6 +19,7 @@ import { Avatar } from "@/components/Avatar";
 import { ScanIcon } from "@/components/icons";
 import { isDesktopTauri } from "@/platform";
 import { onTrayAction, pushRecentRooms } from "@/platform/tray";
+import { useBackHandler } from "@/platform/backButton";
 
 type MyRoom = {
   code: string;
@@ -55,6 +56,8 @@ export default function Home() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // 右栏选中的文档(v4.0 联调反馈图9:列表选中 → 原地展示可编辑内容)
   const [activeCode, setActiveCode] = useState<string | null>(null);
+  // Android 返回键:文档面板打开时(移动端全屏接管)先回列表,而不是直接退出 App
+  useBackHandler(activeCode !== null, () => setActiveCode(null));
 
   // 我的房间(memberships ⨝ docs;/health 仅作连通探测,L18 不再列文档码)
   const fetchMine = useCallback(async () => {

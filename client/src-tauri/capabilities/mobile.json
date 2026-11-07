@@ -1,13 +1,21 @@
 {
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "mobile-scan",
-  "description": "移动端扫码权限（插件仅在 android/ios 目标编入）",
-  "platforms": ["android", "iOS"],
-  "windows": ["main"],
+  "description": "移动端:扫码插件 + 返回键监听/退出(Android 侧滑返回)",
+  "platforms": [
+    "android",
+    "iOS"
+  ],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "barcode-scanner:allow-scan",
     "barcode-scanner:allow-cancel",
     "barcode-scanner:allow-check-permissions",
-    "barcode-scanner:allow-request-permissions"
+    "barcode-scanner:allow-request-permissions",
+    "core:app:allow-register-listener",
+    "core:app:allow-remove-listener",
+    "core:app:allow-exit"
   ]
 }

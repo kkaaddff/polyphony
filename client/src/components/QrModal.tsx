@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { renderQr } from "@/lib/qr";
 import { copyText } from "@/lib/clipboard";
 import { useT } from "@/i18n";
+import { useBackHandler } from "@/platform/backButton";
 
 interface QrModalProps {
   url: string;
@@ -13,6 +14,8 @@ interface QrModalProps {
 }
 
 export function QrModal({ url, title, desc, onClose }: QrModalProps) {
+  // Android 返回键/侧滑返回:先关弹层
+  useBackHandler(true, onClose);
   const { t } = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);

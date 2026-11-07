@@ -14,6 +14,7 @@ import {
 } from "@/lib/pairing";
 import { getServerBase } from "@/lib/serverConfig";
 import { useT } from "@/i18n";
+import { useBackHandler } from "@/platform/backButton";
 
 interface PairModalProps {
   pairings: PairingInfo[];
@@ -22,6 +23,8 @@ interface PairModalProps {
 }
 
 export function PairModal({ pairings, refresh, onClose }: PairModalProps) {
+  // Android 返回键/侧滑返回:先关弹层
+  useBackHandler(true, onClose);
   const { t } = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pairing, setPairing] = useState<{ code: string; expiresAt: number } | null>(null);

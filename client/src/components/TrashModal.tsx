@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { fetchTrash, restoreDoc, purgeDoc, exportDoc, type TrashEntry } from "@/lib/docs";
 import { getServerBase } from "@/lib/serverConfig";
 import { useT } from "@/i18n";
+import { useBackHandler } from "@/platform/backButton";
 
 interface TrashModalProps {
   onClose: () => void;
@@ -10,6 +11,8 @@ interface TrashModalProps {
 }
 
 export function TrashModal({ onClose, onChanged }: TrashModalProps) {
+  // Android 返回键/侧滑返回:先关弹层
+  useBackHandler(true, onClose);
   const { t } = useT();
   const [docs, setDocs] = useState<TrashEntry[]>([]);
   const [busy, setBusy] = useState("");
