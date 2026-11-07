@@ -64,7 +64,7 @@ export function Menu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-2 min-w-44 rounded-lg border border-gray-100 bg-white py-1 shadow-lg"
+          className="absolute right-0 top-full z-50 mt-2 min-w-44 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-100 bg-white py-1 shadow-lg"
         >
           <MenuCloseContext.Provider value={{ close: () => setOpen(false) }}>
             {children}

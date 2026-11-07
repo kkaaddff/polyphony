@@ -124,6 +124,18 @@ test.describe("首页(移动单列)", () => {
       page.getByRole("heading", { name: "Polyphony", exact: true })
     ).toBeHidden();
 
+    // 头像菜单:身份区必须靠右,面板完整落在视口内(真机实踩:justify-between 只剩一个
+    // 子元素时身份区跑到左侧,右对齐面板顶出屏幕左缘、文字被裁)
+    const avatar = page.getByTitle("账号菜单");
+    const avatarBox = (await avatar.boundingBox())!;
+    const vw = page.viewportSize()!.width;
+    expect(avatarBox.x + avatarBox.width).toBeGreaterThan(vw * 0.75);
+    await avatar.click();
+    const menuBox = (await page.getByRole("menu").boundingBox())!;
+    expect(menuBox.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(vw + 0.5);
+    await page.keyboard.press("Escape");
+
     // 创建按钮=加入表单内的小按钮,与输入框同宽(同卡)
     const input = await page.locator("#roomCode").boundingBox();
     const create = await page.getByRole("button", { name: "创建新文档" }).boundingBox();

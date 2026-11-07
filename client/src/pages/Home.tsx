@@ -289,7 +289,9 @@ export default function Home() {
           <h1 className="text-2xl font-bold text-gray-900">{t("common.appName")}</h1>
           <p className="text-sm text-gray-500 truncate hidden md:block">{t("common.taglineShort")}</p>
         </div>
-        <div className="flex items-center gap-2 min-w-0">
+        {/* ml-auto:品牌区在移动端 hidden 后,justify-between 只剩一个子元素会靠左;
+            身份区必须显式靠右,否则头像菜单面板锚在屏幕中段、右对齐展开后被左缘裁掉(真机实踩) */}
+        <div className="flex items-center gap-2 min-w-0 ml-auto">
           <span className="text-sm text-gray-700 font-medium truncate max-w-[10rem]">
             {account?.name ?? t("common.anonymous")}
           </span>
