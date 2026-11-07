@@ -2,15 +2,18 @@
 // Android App 走原生插件全屏扫码;其余环境 jsQR + getUserMedia rAF 解码。
 // 所有形态都提供粘贴链接输入(桌面无摄像头时为主入口);结果统一交调用方 intake 分派。
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   decodeVideoFrame,
   getCameraStream,
   hasNativeScanner,
+  nativeCancelScan,
   nativeScanQr,
   rejectionMessage,
   stopStream,
 } from "@/platform/scanQr";
 import { useT } from "@/i18n";
+import { useBackHandler } from "@/platform/backButton";
 
 interface ScanModalProps {
   onResult: (text: string) => void;
@@ -18,6 +21,8 @@ interface ScanModalProps {
 }
 
 export function ScanModal({ onResult, onClose }: ScanModalProps) {
+  // Android 返回键/侧滑返回:先关弹层
+  useBackHandler(true, onClose);
   const videoRef = useRef<HTMLVideoElement>(null);
   const { t } = useT();
   const [error, setError] = useState("");
@@ -36,33 +41,61 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // 原生分支：插件自带全屏取景，这里只等结果（取消返回 null）
+  // 回调走 ref:调用方传的是内联箭头,且欢迎页每秒重渲染(倒计时)——若进 effect 依赖,
+  // 扫码会每秒被拆掉重开,插件每次 dismantle+setup 相机 → 画面与黑屏交替闪烁(v4 实踩)。
+  const onResultRef = useRef(onResult);
+  const onCloseRef = useRef(onClose);
+  onResultRef.current = onResult;
+  onCloseRef.current = onClose;
+
+  // 原生分支:只在挂载时启动一次;卸载(取消/返回键/切粘贴)时取消插件扫码释放相机
+  const [nativeLive, setNativeLive] = useState(false);
   useEffect(() => {
     if (!waitingNative) return;
     let cancelled = false;
     (async () => {
       try {
+        setNativeLive(true);
         const text = await nativeScanQr();
         if (cancelled || abandoned.current) return;
-        if (text) onResult(text);
-        else onClose();
+        if (text) onResultRef.current(text);
+        else onCloseRef.current();
       } catch (e) {
         if (cancelled || abandoned.current) return;
         // 失败不再停留在空黑屏(实踩「调起扫码失败:[object Object]」孤零零挂中间):
         // 立即切粘贴为主入口,错误作为顶部条带展示。
         const raw = rejectionMessage(e);
+        if (raw === "cancelled") return;
         setError(
           raw === "ERR_SCAN_PERMISSION"
             ? t("scanModal.permDenied")
             : t("scanModal.nativeFail", { msg: raw })
         );
         setPasteMode(true);
+      } finally {
+        if (!cancelled) setNativeLive(false);
       }
     })();
     return () => {
       cancelled = true;
+      void nativeCancelScan();
     };
-  }, [waitingNative, onResult, onClose, t]);
+  }, [waitingNative]);
+
+  // 原生取景进行中:页面整体透明,露出 WebView 下层的相机预览(windowed 模式)
+  useEffect(() => {
+    if (!nativeLive || pasteMode) return;
+    document.documentElement.classList.add("native-scanning");
+    return () => document.documentElement.classList.remove("native-scanning");
+  }, [nativeLive, pasteMode]);
+
+  const leaveNative = (toPaste: boolean) => {
+    abandoned.current = true;
+    void nativeCancelScan();
+    setNativeLive(false);
+    if (toPaste) setPasteMode(true);
+    else onClose();
+  };
 
   // 网页分支：video 取景 + rAF 循环解码
   useEffect(() => {
@@ -84,7 +117,7 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
           if (cancelled) return;
           const text = decodeVideoFrame(video, canvas);
           if (text) {
-            onResult(text);
+            onResultRef.current(text);
             return;
           }
           raf = requestAnimationFrame(tick);
@@ -107,7 +140,7 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
       cancelAnimationFrame(raf);
       stopStream(stream);
     };
-  }, [waitingNative, pasteMode, onResult, t]);
+  }, [waitingNative, pasteMode, t]);
 
   const submitPaste = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,8 +173,13 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
     </form>
   );
 
-  return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-4">
+  const transparent = waitingNative && !pasteMode;
+  return createPortal(
+    <div
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-4 ${
+        transparent ? "bg-transparent" : "bg-black"
+      }`}
+    >
       {pasteMode ? (
         <div className="w-full flex flex-col items-center gap-4">
           {error && (
@@ -158,23 +196,24 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
           </button>
         </div>
       ) : waitingNative ? (
-        <div className="text-center space-y-4">
-          <p className="text-white text-sm">{t("scanModal.nativeStarting")}</p>
-          <button
-            onClick={() => {
-              abandoned.current = true;
-              setPasteMode(true);
-            }}
-            className="px-6 py-2 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-colors"
-          >
-            {t("scanModal.pasteInstead")}
-          </button>
-          <button
-            onClick={onClose}
-            className="px-8 py-2 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition-colors"
-          >
-            {t("common.cancel")}
-          </button>
+        // 透明取景层:相机预览在 WebView 下方,这里只画取景框与退出入口
+        <div className="w-full h-full flex flex-col items-center justify-between py-10">
+          <p className="text-white text-sm drop-shadow">{t("scanModal.aim")}</p>
+          <div className="w-64 h-64 rounded-2xl border-4 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+          <div className="flex gap-3">
+            <button
+              onClick={() => leaveNative(true)}
+              className="px-6 py-2.5 min-h-tap-44 rounded-lg bg-black/50 text-white text-sm font-medium"
+            >
+              {t("scanModal.pasteInstead")}
+            </button>
+            <button
+              onClick={() => leaveNative(false)}
+              className="px-8 py-2.5 min-h-tap-44 rounded-lg bg-white text-gray-900 text-sm font-semibold"
+            >
+              {t("common.cancel")}
+            </button>
+          </div>
         </div>
       ) : (
         <>
@@ -198,6 +237,7 @@ export function ScanModal({ onResult, onClose }: ScanModalProps) {
           </button>
         </>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }

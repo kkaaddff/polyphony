@@ -23,8 +23,21 @@ export async function nativeScanQr(): Promise<string | null> {
   if (perm !== "granted") {
     throw new Error("ERR_SCAN_PERMISSION");
   }
-  const result = await scan({ formats: [Format.QRCode], windowed: false });
+  // windowed:true —— 预览铺在 WebView 之下、WebView 透明,我们自己的取消按钮/取景框
+  // 能画在相机画面之上(windowed:false 时原生预览盖住整个 WebView,用户无任何退出入口,实踩)。
+  // 页面透明由 ScanModal 在 <html> 上挂 native-scanning 类完成(见 index.css)。
+  const result = await scan({ formats: [Format.QRCode], windowed: true });
   return result?.content ?? null;
+}
+
+/** 取消进行中的原生扫码(卸载弹层/返回键时调用;插件会 reject 掉挂起的 scan)。 */
+export async function nativeCancelScan(): Promise<void> {
+  try {
+    const { cancel } = await import("@tauri-apps/plugin-barcode-scanner");
+    await cancel();
+  } catch {
+    /* 未在扫码中:忽略 */
+  }
 }
 
 /** 任意 rejection → 人类可读文案(插件 reject 的是普通对象,直接 String() 会变 [object Object])。 */

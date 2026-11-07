@@ -75,3 +75,15 @@ select,
   -webkit-user-select: auto;
   user-select: auto;
 }
+
+/*
+ * 原生扫码(windowed)进行中:相机预览在 WebView 之下,整页必须透明才能露出画面;
+ * #root 隐藏,只留 portal 到 body 的 ScanModal 取景层(取景框 + 取消按钮)。
+ */
+html.native-scanning,
+html.native-scanning body {
+  background: transparent !important;
+}
+html.native-scanning #root {
+  visibility: hidden;
+}
