@@ -1,4 +1,4 @@
-// 首页:登录守卫、双栏一屏布局、顶栏身份、创建/加入、我的文档(批量退出)、回收站入口。
+// 首页:登录守卫、双栏一屏布局、顶栏身份、创建/加入、我的文档(逐行退出)、回收站入口。
 import { expect, test } from "@playwright/test";
 import { captureDialogs, createAccount, createDoc, loginTestAccount, openShareSite } from "./helpers";
 
@@ -123,9 +123,9 @@ test.describe("我的文档(成员登记)", () => {
     await expect(page.getByText("未命名文档", { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
-  test("批量退出:加入他人 3 个文档,退出 2 留 1(owner 行不可选不可退)", async ({ page }) => {
+  test("成员行逐个退出;owner 行只有删除没有退出(批量管理已移除)", async ({ page }) => {
     const other = await createAccount(); // 文档所有者(另一账号)
-    const acc = await loginTestAccount(page); // 本页账号:纯成员,行可批量退出
+    const acc = await loginTestAccount(page); // 本页账号:纯成员
     for (const base of ["BATCH1", "BATCH2", "BATCH3"]) {
       const code = await createDoc(other.token, `批量${base}`);
       await fetch(`${API}/rooms/enter`, {
@@ -139,24 +139,19 @@ test.describe("我的文档(成员登记)", () => {
     }
     await page.goto("/");
     await expect(page.getByText("批量BATCH1")).toBeVisible({ timeout: 10_000 });
+
+    // 批量管理入口已移除(只对「加入别人的文档」有意义,自有文档下是空操作)
+    await expect(page.getByRole("button", { name: /批量管理/ })).toHaveCount(0);
+    await expect(page.locator('input[type="checkbox"]')).toHaveCount(0);
+
+    // 成员行右侧 ✕ = 退出该文档,逐个退出
+    for (const name of ["批量BATCH1", "批量BATCH2"]) {
+      const row = page.locator("li", { hasText: name });
+      page.once("dialog", (d) => d.accept());
+      await row.getByTitle("退出该文档").click();
+      await expect(page.getByText(name)).toHaveCount(0, { timeout: 10_000 });
+    }
     await expect(page.getByText("批量BATCH3")).toBeVisible();
-
-    await page.getByRole("button", { name: /批量管理/ }).click();
-    await page
-      .locator("li", { hasText: "批量BATCH1" })
-      .locator('input[type="checkbox"]')
-      .check();
-    await page
-      .locator("li", { hasText: "批量BATCH2" })
-      .locator('input[type="checkbox"]')
-      .check();
-
-    page.once("dialog", (d) => d.accept());
-    await page.getByRole("button", { name: /退出所选/ }).click();
-
-    await expect(page.getByText("批量BATCH3")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("批量BATCH1")).toHaveCount(0);
-    await expect(page.getByText("批量BATCH2")).toHaveCount(0);
   });
 
   test("所有者删除:文档进回收站,回收站弹窗可恢复", async ({ page }) => {

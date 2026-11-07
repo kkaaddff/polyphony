@@ -52,8 +52,6 @@ export default function Home() {
   // 红点来源:/rooms 的 pendingPairings(V11,任一已登录设备可确认)
   const [pendingPairings, setPendingPairings] = useState(0);
   const [trashOpen, setTrashOpen] = useState(false);
-  const [batch, setBatch] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   // 右栏选中的文档(v4.0 联调反馈图9:列表选中 → 原地展示可编辑内容)
   const [activeCode, setActiveCode] = useState<string | null>(null);
   // Android 返回键:文档面板打开时(移动端全屏接管)先回列表,而不是直接退出 App
@@ -191,7 +189,6 @@ export default function Home() {
       });
       const data = await res.json();
       if (Array.isArray(data?.rooms)) setMyRooms(data.rooms);
-      setSelected(new Set());
       if (activeCode && codes.includes(activeCode)) setActiveCode(null);
       for (const c of codes) clearRoomCache(c);
     } catch {
@@ -225,21 +222,6 @@ export default function Home() {
     },
     [fetchMine, t]
   );
-
-  const toggleSelect = (code: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  };
-
-  const leaveSelected = () => {
-    if (selected.size === 0) return;
-    if (!window.confirm(t("home.leaveBatchConfirm", { n: selected.size }))) return;
-    void doLeave([...selected]);
-  };
 
   // 退出登录 = 服务端吊销本机凭据 + 清全部本地(凭据/文档缓存/最近房间)
   const logout = async () => {
@@ -278,8 +260,6 @@ export default function Home() {
   }, []);
 
   const activeRooms = myRooms.filter((r) => r.status === "active");
-  const selectableRooms = activeRooms.filter((r) => !r.isOwner);
-  const allSelected = selectableRooms.length > 0 && selected.size === selectableRooms.length;
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100 overflow-hidden pt-[env(safe-area-inset-top)] box-border">
@@ -390,43 +370,6 @@ export default function Home() {
           <div className="flex-1 min-h-0 bg-white rounded-2xl shadow-lg flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
               <span className="text-sm font-medium text-gray-700">{t("home.myRooms")}</span>
-              {batch ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() =>
-                      setSelected(allSelected ? new Set() : new Set(selectableRooms.map((r) => r.code)))
-                    }
-                    className="text-xs text-gray-500 hover:text-blue-600"
-                  >
-                    {allSelected ? t("common.cancel") : t("home.selectAll")}
-                  </button>
-                  <button
-                    onClick={leaveSelected}
-                    disabled={selected.size === 0}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 disabled:opacity-40 transition-colors"
-                  >
-                    {t("home.leaveSelected")}
-                    {selected.size > 0 ? ` (${selected.size})` : ""}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setBatch(false);
-                      setSelected(new Set());
-                    }}
-                    className="text-xs px-2 py-1.5 text-gray-500 hover:text-gray-600"
-                  >
-                    {t("home.batchDone")}
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setBatch(true)}
-                  disabled={activeRooms.length === 0}
-                  className="text-xs text-gray-500 hover:text-blue-600 disabled:opacity-40"
-                >
-                  ⚙ {t("home.batchBtn")}
-                </button>
-              )}
             </div>
 
             <div className="flex-1 overflow-y-auto px-2 py-2">
@@ -436,32 +379,17 @@ export default function Home() {
                 <p className="text-sm text-gray-500 py-12 text-center">{t("home.recentEmpty")}</p>
               ) : (
                 <ul className="space-y-1">
-                  {batch && selectableRooms.length === 0 && (
-                    <li className="px-3 py-2 text-xs text-gray-500 leading-relaxed">
-                      {t("home.batchOwnerOnly")}
-                    </li>
-                  )}
                   {activeRooms.map((room) => {
                     return (
                       <li key={room.code} className="relative">
                         {/* 整行可点:覆盖层按钮铺满行(操作按钮/复选框 z-10 置于其上)。
                             单行不换行 —— 文档名截断,「上次使用/在线人数」作第二行小字。 */}
                         <div className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors">
-                          {batch && !room.isOwner && (
-                            <input
-                              type="checkbox"
-                              checked={selected.has(room.code)}
-                              onChange={() => toggleSelect(room.code)}
-                              className="relative z-10 shrink-0 size-5 accent-blue-600"
-                              aria-label={room.name || `${t("common.unnamedDoc")} ${room.code}`}
-                            />
-                          )}
                           <button
                             type="button"
-                            onClick={() => !batch && void enterRoom(room.code)}
-                            disabled={batch}
+                            onClick={() => void enterRoom(room.code)}
                             aria-label={room.name || `${t("common.unnamedDoc")} ${room.code}`}
-                            className="absolute inset-0 z-0 rounded-lg disabled:cursor-default"
+                            className="absolute inset-0 z-0 rounded-lg"
                           />
                           <div className="pointer-events-none min-w-0 flex-1">
                             <div className="flex items-center gap-2 min-w-0">
