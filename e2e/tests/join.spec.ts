@@ -37,15 +37,14 @@ test.describe("/join 分流", () => {
     await page.goto(`/?join=${longA}`);
     await expect(page.locator("#roomCode")).toHaveValue(codeA);
     await page.getByRole("button", { name: "加入文档" }).click();
-    // 加入 → 右栏面板打开;面板 RoomHeader 显示截断后的码
+    // 加入 → 右栏面板打开(文档码不再在界面上展示,面板打开即成功)
     const paneBtn = page.getByRole("button", { name: "完整编辑器" });
     await expect(paneBtn).toBeVisible({ timeout: 10_000 });
-    // exact:左栏列表行(名称含「未命名文档 <码>」)也会匹配到模糊名,取顶栏码按钮
-    await expect(page.getByRole("button", { name: codeA, exact: true })).toBeVisible();
+    await expect(page.getByText(codeA, { exact: true })).toHaveCount(0);
 
     // /join 直达路径同样截断
     await page.goto(`/join?code=${longB}`);
-    await expect(page.getByRole("button", { name: codeB, exact: true })).toBeVisible({
+    await expect(page.getByRole("button", { name: "完整编辑器" })).toBeVisible({
       timeout: 10_000,
     });
   });

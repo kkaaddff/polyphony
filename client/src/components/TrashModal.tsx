@@ -94,7 +94,6 @@ export function TrashModal({ onClose, onChanged }: TrashModalProps) {
                   <span className="text-sm text-gray-900 font-medium truncate">
                     {d.name || t("common.unnamedDoc")}
                   </span>
-                  <code className="text-xs text-gray-500 font-mono shrink-0">{d.code}</code>
                 </div>
                 <p className="text-xs text-gray-500">
                   {d.trashReason === "inactive"

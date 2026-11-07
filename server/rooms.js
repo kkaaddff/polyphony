@@ -23,7 +23,9 @@ export function listRooms(accountId) {
               m.last_used AS lastUsed, d.name, d.status
          FROM memberships m JOIN docs d ON d.code = m.doc_code
         WHERE m.account_id = ?
-        ORDER BY m.last_used DESC`
+        /* 稳定顺序:按加入先后(新加入的在前),不随「最后使用时间」变化——
+           否则点开一个文档就把它挪到列表第一行,选中文档会跳动(联调反馈) */
+        ORDER BY m.rowid DESC`
     )
     .all(accountId);
 }

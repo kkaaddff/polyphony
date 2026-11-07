@@ -16,7 +16,7 @@ import { TrashModal } from "@/components/TrashModal";
 import { DocPane } from "@/components/DocPane";
 import { Menu, MenuItem } from "@/components/Menu";
 import { Avatar } from "@/components/Avatar";
-import { ScanIcon } from "@/components/icons";
+import { DeleteOutlined, QrcodeOutlined, ScanOutlined, CloseOutlined } from "@ant-design/icons";
 import { isDesktopTauri } from "@/platform";
 import { onTrayAction, pushRecentRooms } from "@/platform/tray";
 import { useBackHandler } from "@/platform/backButton";
@@ -324,9 +324,6 @@ export default function Home() {
             onSubmit={handleJoinRoom}
             className="shrink-0 bg-white rounded-2xl shadow-lg p-4 space-y-3"
           >
-            <label htmlFor="roomCode" className="block text-sm font-medium text-gray-700">
-              {t("home.roomCode")}
-            </label>
             {/* 扫码作为输入框的 suffix(联调反馈),不再单独占一个按钮位 */}
             <div className="relative">
               <input
@@ -335,6 +332,7 @@ export default function Home() {
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                 placeholder={t("home.roomCodePlaceholder")}
+                aria-label={t("home.roomCodePlaceholder")}
                 maxLength={8}
                 className="w-full pl-4 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
               />
@@ -345,7 +343,7 @@ export default function Home() {
                 aria-label={t("home.scanBtn")}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 size-9 flex items-center justify-center rounded-md text-gray-500 hover:text-blue-600 hover:bg-gray-100 transition-colors"
               >
-                <ScanIcon className="size-5" />
+                <ScanOutlined className="text-lg" />
               </button>
             </div>
             {/* 加入 / 新建并排一排(联调反馈):加入为主、新建为次 */}
@@ -388,7 +386,7 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() => void enterRoom(room.code)}
-                            aria-label={room.name || `${t("common.unnamedDoc")} ${room.code}`}
+                            aria-label={room.name || t("common.unnamedDoc")}
                             className="absolute inset-0 z-0 rounded-lg"
                           />
                           <div className="pointer-events-none min-w-0 flex-1">
@@ -400,9 +398,6 @@ export default function Home() {
                               >
                                 {room.name || t("common.unnamedDoc")}
                               </span>
-                              <code className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono shrink-0">
-                                {room.code}
-                              </code>
                             </div>
                             <p className="text-xs text-gray-500 truncate mt-0.5">
                               {room.userCount > 0 ? (
@@ -422,7 +417,7 @@ export default function Home() {
                               title={t("home.showQrTitle")}
                               className="text-gray-500 hover:text-blue-600 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
                             >
-                              ▦
+                              <QrcodeOutlined className="text-lg" />
                             </button>
                             {room.isOwner ? (
                               <button
@@ -430,7 +425,7 @@ export default function Home() {
                                 title={t("docs.deleteBtnTitle")}
                                 className="text-gray-500 hover:text-red-500 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
                               >
-                                🗑
+                                <DeleteOutlined className="text-lg" />
                               </button>
                             ) : (
                               <button
@@ -438,7 +433,7 @@ export default function Home() {
                                 title={t("home.leaveSingleTitle")}
                                 className="text-gray-500 hover:text-red-500 p-2 min-w-tap-40 min-h-tap-40 flex items-center justify-center text-lg"
                               >
-                                ✕
+                                <CloseOutlined className="text-lg" />
                               </button>
                             )}
                           </div>

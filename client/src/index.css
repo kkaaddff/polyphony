@@ -87,3 +87,13 @@ html.native-scanning body {
 html.native-scanning #root {
   visibility: hidden;
 }
+
+/*
+ * 可点元素统一小手(Tailwind v4 preflight 不再给 button 默认 cursor:pointer,
+ * 实踩整行可点/图标按钮悬停仍是箭头)。
+ */
+button:not(:disabled),
+[role="menuitem"],
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}

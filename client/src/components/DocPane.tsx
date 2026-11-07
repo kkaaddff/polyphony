@@ -123,7 +123,7 @@ export function DocPane({ code, userName, userId, onClose, onUnavailable }: DocP
   };
 
   const doDelete = async () => {
-    if (!window.confirm(t("docs.deleteConfirm", { code }))) return;
+    if (!window.confirm(t("docs.deleteConfirm", { name: roomName || t("common.unnamedDoc") }))) return;
     setDocBusy(true);
     try {
       await deleteDoc(code);

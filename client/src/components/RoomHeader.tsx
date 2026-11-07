@@ -1,11 +1,13 @@
-// 顶栏:品牌(点击回首页)+ 房间名(就地重命名)+ 房间码(点击复制邀请链接)+ 连接状态 +
+// 顶栏:品牌(点击回首页)+ 房间名(就地重命名)+ 分享按钮(复制邀请链接)+ 连接状态 +
 // 自定义操作区(字数/导出/删除由 Editor 注入) + 「👥 n」菜单(发送邀请 / 退出房间)。
+// 文档码不在界面上展示(联调反馈):分享即入口,码只存在于链接里。
 // 响应式:flex-wrap 两行式——移动端不再挤压;曾因元素重叠导致「退出房间」点不动。
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { QrModal } from "@/components/QrModal";
 import { Menu, MenuItem } from "@/components/Menu";
 import { ChevronDownIcon } from "@/components/icons";
+import { ShareAltOutlined } from "@ant-design/icons";
 import { useToast } from "@/components/Toast";
 import { copyText } from "@/lib/clipboard";
 import { getServerBase } from "@/lib/serverConfig";
@@ -55,7 +57,7 @@ export function RoomHeader({
     if (await copyText(url)) {
       toast.show(t("roomHeader.copyLinkOk"), "success");
     } else {
-      toast.show(t("roomHeader.copyFail", { code: roomCode }), "error");
+      toast.show(t("roomHeader.copyFail"), "error");
     }
   };
 
@@ -104,13 +106,14 @@ export function RoomHeader({
               {roomName || t("common.unnamedDoc")}
             </button>
           )}
-          {/* 房间码即复制按钮:点一下 → 复制邀请链接(toast「链接已复制」) */}
+          {/* 分享:复制邀请链接(不再展示文档码;反馈 toast 在顶部) */}
           <button
             onClick={() => void copyInviteLink()}
-            title={t("roomHeader.copyCodeTitle")}
-            className="bg-gray-100 dark:bg-gray-700 px-2 rounded text-xs md:text-sm font-mono text-gray-900 dark:text-white shrink-0 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-tap-38 flex items-center"
+            title={t("roomHeader.shareTitle")}
+            className="bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded text-xs md:text-sm text-gray-700 dark:text-gray-200 shrink-0 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-tap-38 flex items-center gap-1"
           >
-            {roomCode}
+            <ShareAltOutlined />
+            <span>{t("roomHeader.shareBtn")}</span>
           </button>
         </div>
       </div>

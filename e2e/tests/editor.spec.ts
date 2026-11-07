@@ -46,11 +46,11 @@ test.describe("路由守卫与退出", () => {
 });
 
 test.describe("顶栏", () => {
-  test("点击文档码复制：toast 反馈 + 剪贴板内容正确", async ({ page }) => {
+  test("分享按钮复制邀请链接：toast 反馈 + 剪贴板内容正确", async ({ page }) => {
     const code = await openEditor(page);
-    // 文档码本身即复制按钮(不再有独立「复制」按钮)
-    // 点击文档码 = 复制邀请链接(v4.0 反馈:复制链接而非裸码)
-    await page.getByRole("button", { name: code }).click();
+    // 顶栏不再展示文档码:分享按钮 = 复制邀请链接,码只存在于链接里
+    await expect(page.getByText(code, { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "分享" }).click();
     await expect(
       page.getByRole("status").filter({ hasText: "邀请链接已复制" })
     ).toBeVisible();
@@ -68,7 +68,7 @@ test.describe("顶栏", () => {
     await page.addInitScript((t) => localStorage.setItem("polyphony.token", t), token);
     await page.goto(`/editor?code=${code}&name=${encodeURIComponent("张三")}`);
     await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: code }).click();
+    await page.getByRole("button", { name: "分享" }).click();
     // 不能无反馈/抛错：降级 execCommand 路径给出同样的 toast
     await expect(
       page.getByRole("status").filter({ hasText: "邀请链接已复制" })
