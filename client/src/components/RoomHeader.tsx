@@ -139,9 +139,8 @@ export function RoomHeader({
             </>
           }
         >
-          {/* 移动端:在线用户列表收进底部面板;桌面常驻侧栏无需此项 */}
+          {/* 在线用户列表:移动端编辑器为底部抽屉、首页文档面板为弹层 */}
           <MenuItem
-            className="md:hidden"
             onClick={() =>
               window.dispatchEvent(new CustomEvent("polyphony:open-users"))
             }

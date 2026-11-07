@@ -39,6 +39,7 @@ export const en = {
     offlineWritable: "Offline-ready",
     alertNeedRoomCode: "Please enter a document code",
     alertInvalidQr: "Not a valid QR code",
+    batchOwnerOnly: "Docs you created can't be batch-left; use 🗑 to delete (recoverable from trash for 30 days).",
     batchBtn: "Manage",
     batchDone: "Done",
     selectAll: "Select all",

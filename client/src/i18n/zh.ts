@@ -34,6 +34,7 @@ export const zh = {
     offlineWritable: "离线可写",
     alertNeedRoomCode: "请输入文档代码",
     alertInvalidQr: "未识别到有效的二维码",
+    batchOwnerOnly: "你创建的文档不能批量退出；要删除请用 🗑（进回收站，30 天内可恢复）。",
     batchBtn: "批量管理",
     batchDone: "完成",
     selectAll: "全选",

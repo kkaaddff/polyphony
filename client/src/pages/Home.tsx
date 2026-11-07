@@ -347,15 +347,28 @@ export default function Home() {
             <label htmlFor="roomCode" className="block text-sm font-medium text-gray-700">
               {t("home.roomCode")}
             </label>
-            <input
-              type="text"
-              id="roomCode"
-              value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              placeholder={t("home.roomCodePlaceholder")}
-              maxLength={8}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
-            />
+            {/* 扫码作为输入框的 suffix(联调反馈),不再单独占一个按钮位 */}
+            <div className="relative">
+              <input
+                type="text"
+                id="roomCode"
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                placeholder={t("home.roomCodePlaceholder")}
+                maxLength={8}
+                className="w-full pl-4 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setScanOpen(true)}
+                title={t("home.scanBtnTitle")}
+                aria-label={t("home.scanBtn")}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 size-9 flex items-center justify-center rounded-md text-gray-500 hover:text-blue-600 hover:bg-gray-100 transition-colors"
+              >
+                <ScanIcon className="size-5" />
+              </button>
+            </div>
+            {/* 加入 / 新建并排一排(联调反馈):加入为主、新建为次 */}
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -365,22 +378,12 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                onClick={() => setScanOpen(true)}
-                title={t("home.scanBtnTitle")}
-                className="px-4 py-2.5 min-h-tap-44 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors"
+                onClick={() => void handleCreateNew()}
+                className="flex-1 py-2.5 min-h-tap-44 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow flex items-center justify-center gap-1"
               >
-                <ScanIcon className="inline-block size-4" />{" "}
-                <span className="hidden sm:inline">{t("home.scanBtn")}</span>
+                <span>＋</span> {t("home.createBtn")}
               </button>
             </div>
-            {/* 新建:次要动作=表单内小按钮(v4.0 联调反馈:原顶部巨块太占首屏) */}
-            <button
-              type="button"
-              onClick={() => void handleCreateNew()}
-              className="w-full py-2 min-h-tap-40 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-xs font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow flex items-center justify-center gap-1"
-            >
-              <span>＋</span> {t("home.createBtn")}
-            </button>
           </form>
 
           {/* 我的文档(服务端房间簿;列表内滚,一屏无外滚) */}
@@ -418,7 +421,7 @@ export default function Home() {
               ) : (
                 <button
                   onClick={() => setBatch(true)}
-                  disabled={selectableRooms.length === 0}
+                  disabled={activeRooms.length === 0}
                   className="text-xs text-gray-500 hover:text-blue-600 disabled:opacity-40"
                 >
                   ⚙ {t("home.batchBtn")}
@@ -433,47 +436,59 @@ export default function Home() {
                 <p className="text-sm text-gray-500 py-12 text-center">{t("home.recentEmpty")}</p>
               ) : (
                 <ul className="space-y-1">
+                  {batch && selectableRooms.length === 0 && (
+                    <li className="px-3 py-2 text-xs text-gray-500 leading-relaxed">
+                      {t("home.batchOwnerOnly")}
+                    </li>
+                  )}
                   {activeRooms.map((room) => {
                     return (
-                      <li key={room.code}>
-                        <div className="group flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors">
+                      <li key={room.code} className="relative">
+                        {/* 整行可点:覆盖层按钮铺满行(操作按钮/复选框 z-10 置于其上)。
+                            单行不换行 —— 文档名截断,「上次使用/在线人数」作第二行小字。 */}
+                        <div className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors">
                           {batch && !room.isOwner && (
                             <input
                               type="checkbox"
                               checked={selected.has(room.code)}
                               onChange={() => toggleSelect(room.code)}
-                              className="shrink-0 size-5 accent-blue-600"
-                              aria-label={room.name || room.code}
+                              className="relative z-10 shrink-0 size-5 accent-blue-600"
+                              aria-label={room.name || `${t("common.unnamedDoc")} ${room.code}`}
                             />
                           )}
                           <button
+                            type="button"
                             onClick={() => !batch && void enterRoom(room.code)}
                             disabled={batch}
-                            className="flex-1 min-w-[9rem] flex items-center gap-2 text-left py-1.5 disabled:cursor-default"
-                          >
-                            <span
-                              className={`font-medium truncate ${
-                                activeCode === room.code ? "text-blue-600" : "text-gray-900"
-                              }`}
-                            >
-                              {room.name || t("common.unnamedDoc")}
-                            </span>
-                            <code className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono shrink-0">
-                              {room.code}
-                            </code>
-                          </button>
-                          <span className="text-xs text-gray-500 shrink-0 w-full md:w-auto pl-1 md:pl-0">
-                            {room.userCount > 0 ? (
-                              <span className="text-green-600">
-                                ● {t("home.nOnline", { n: room.userCount })}
+                            aria-label={room.name || `${t("common.unnamedDoc")} ${room.code}`}
+                            className="absolute inset-0 z-0 rounded-lg disabled:cursor-default"
+                          />
+                          <div className="pointer-events-none min-w-0 flex-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className={`font-medium truncate ${
+                                  activeCode === room.code ? "text-blue-600" : "text-gray-900"
+                                }`}
+                              >
+                                {room.name || t("common.unnamedDoc")}
                               </span>
-                            ) : (
-                              <span>
-                                {t("home.lastUsed")} {formatRelative(room.lastUsed, locale)}
-                              </span>
-                            )}
-                          </span>
-                          <div className="flex items-center shrink-0 ml-auto md:ml-0">
+                              <code className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono shrink-0">
+                                {room.code}
+                              </code>
+                            </div>
+                            <p className="text-xs text-gray-500 truncate mt-0.5">
+                              {room.userCount > 0 ? (
+                                <span className="text-green-600">
+                                  ● {t("home.nOnline", { n: room.userCount })}
+                                </span>
+                              ) : (
+                                <>
+                                  {t("home.lastUsed")} {formatRelative(room.lastUsed, locale)}
+                                </>
+                              )}
+                            </p>
+                          </div>
+                          <div className="relative z-10 flex items-center shrink-0">
                             <button
                               onClick={() => setQrFor(room.code)}
                               title={t("home.showQrTitle")}

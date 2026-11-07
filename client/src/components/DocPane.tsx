@@ -1,10 +1,11 @@
 // 首页右栏「轻量文档面板」(v4.0 联调反馈图9):
 // 选中列表项后原地展示文档内容,可编辑、可改名、可邀请/导出——完整编辑器的精简版。
 // 用户列表做成右上角可展开/折叠的悬浮徽标。WS 连接随 code 动态建立/销毁。
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { MDXEditor } from "@mdxeditor/editor";
 import { RoomHeader } from "@/components/RoomHeader";
+import { UsersPanel } from "@/components/UsersPanel";
 import { createEditorPlugins } from "@/components/editorConfig";
 import { useCollaboration } from "@/lib/useCollaboration";
 import { exportDoc, deleteDoc, getDocStatus } from "@/lib/docs";
@@ -76,6 +77,13 @@ export function DocPane({ code, userName, userId, onClose, onUnavailable }: DocP
     () => createEditorPlugins(handleImageUpload, imagePreviewHandler),
     [handleImageUpload, imagePreviewHandler]
   );
+
+  // 顶栏 👥 菜单的「在线用户」→ 打开用户面板(此前 DocPane 另有一套悬浮徽标,重复,已合并)
+  useEffect(() => {
+    const open = () => setUsersOpen(true);
+    window.addEventListener("polyphony:open-users", open);
+    return () => window.removeEventListener("polyphony:open-users", open);
+  }, []);
 
   // 所有权进入时查一次
   useMemo(() => {
@@ -177,45 +185,6 @@ export function DocPane({ code, userName, userId, onClose, onUnavailable }: DocP
 
       {/* 编辑区(相对定位承载悬浮用户列表) */}
       <div className="relative flex-1 min-h-0 flex flex-col p-3 md:p-4">
-        {/* 悬浮用户列表:右上角,可展开/折叠(图9 反馈) */}
-        <div className="absolute top-2 right-3 z-10 flex justify-end">
-          {usersOpen ? (
-            <div className="rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700 px-4 py-3 w-56">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                  {t("usersPanel.online", { n: users.length })}
-                </span>
-                <button
-                  onClick={() => setUsersOpen(false)}
-                  className="text-xs text-gray-400 hover:text-gray-600"
-                  title={t("common.close")}
-                >
-                  ▾
-                </button>
-              </div>
-              <ul className="space-y-1.5">
-                {users.map((u) => (
-                  <li key={u.id} className="flex items-center gap-2 text-sm">
-                    <span
-                      className="size-3 rounded-full shrink-0"
-                      style={{ backgroundColor: u.color }}
-                    />
-                    <span className="truncate text-gray-700 dark:text-gray-300">{u.name}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <button
-              onClick={() => setUsersOpen(true)}
-              className="rounded-full bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-              title={t("usersPanel.online", { n: users.length })}
-            >
-              👥 {users.length} ▴
-            </button>
-          )}
-        </div>
-
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg flex-1 overflow-hidden flex flex-col">
           <div className="flex-1 overflow-auto">
             <MDXEditor
@@ -228,6 +197,29 @@ export function DocPane({ code, userName, userId, onClose, onUnavailable }: DocP
           </div>
         </div>
       </div>
+
+      {/* 在线用户面板(顶栏 👥 菜单触发;移动端底部抽屉,桌面居中卡片) */}
+      {usersOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center md:justify-center"
+          onClick={() => setUsersOpen(false)}
+        >
+          <div
+            className="w-full md:max-w-sm max-h-[70vh] overflow-y-auto rounded-t-2xl md:rounded-2xl bg-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <UsersPanel users={users} />
+            <div className="p-3 border-t border-gray-100">
+              <button
+                onClick={() => setUsersOpen(false)}
+                className="w-full py-2 rounded-lg bg-gray-900 text-white text-sm font-medium"
+              >
+                {t("common.close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

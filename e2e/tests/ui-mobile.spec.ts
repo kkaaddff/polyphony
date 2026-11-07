@@ -136,10 +136,19 @@ test.describe("首页(移动单列)", () => {
     expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(vw + 0.5);
     await page.keyboard.press("Escape");
 
-    // 创建按钮=加入表单内的小按钮,与输入框同宽(同卡)
-    const input = await page.locator("#roomCode").boundingBox();
+    // 加入 / 创建 并排一排,各占一半(联调反馈:扫码挪进输入框 suffix,两个动作同行)
+    const join = await page.getByRole("button", { name: "加入文档" }).boundingBox();
     const create = await page.getByRole("button", { name: "创建新文档" }).boundingBox();
-    expect(create!.width).toBeGreaterThan(input!.width - 4);
+    expect(Math.abs(join!.y - create!.y)).toBeLessThan(4);
+    expect(Math.abs(join!.width - create!.width)).toBeLessThan(4);
+    // 扫码 = 输入框内的 suffix 按钮
+    const scan = page.getByRole("button", { name: "扫码加入" });
+    await expect(scan).toBeVisible();
+    const scanBox = (await scan.boundingBox())!;
+    const inputBox = (await page.locator("#roomCode").boundingBox())!;
+    expect(scanBox.x).toBeGreaterThan(inputBox.x + inputBox.width / 2);
+    expect(scanBox.x + scanBox.width).toBeLessThanOrEqual(inputBox.x + inputBox.width);
+    expect(scanBox.y).toBeGreaterThan(inputBox.y);
 
     // 文档行操作按钮触达(曾被裁出屏外的 ▦/✕)
     await expectTapSize(page, ["创建新文档", "加入文档"]);
@@ -160,9 +169,9 @@ test.describe("首页(移动单列)", () => {
     await expect(page.getByText("移动删除")).toBeVisible({ timeout: 10_000 });
     page.once("dialog", (d) => d.accept());
     await page.getByTitle("删除文档（移入回收站）").click();
-    await expect(page.getByText("回收站", { exact: true }).first()).toBeVisible({
-      timeout: 10_000,
-    });
+    // 主列表只放 active 文档:删除后行消失、空态出现;回收站内容走头像菜单弹窗
+    await expect(page.getByText("移动删除")).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByText("还没有打开过的文档")).toBeVisible();
   });
 
   test("扫码弹层:无摄像头时切粘贴表单,打开不破版", async ({ page }) => {
