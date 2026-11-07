@@ -59,7 +59,9 @@ export default function Welcome() {
   const [nextOverride, setNextOverride] = useState<string | null>(null);
   const [scanNotice, setScanNotice] = useState("");
   const [now, setNow] = useState(() => Date.now());
-  const pairStopped = useRef(false);
+  // push 轮询的运行令牌。旧实现与 pull effect 共享 pairStopped:进入等待页时 pull effect
+  // 的 cleanup 先把它置 true → runPairPoll 一圈都不跑,网页批准了手机也无感(真机实踩)。
+  const pairRun = useRef<{ stopped: boolean } | null>(null);
 
   // pull 本机二维码(反向配对):tab=device 且未在 push 流程时展示
   const [pull, setPull] = useState<{
@@ -73,7 +75,12 @@ export default function Welcome() {
   const pullAttempts = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => () => { pairStopped.current = true; }, []);
+  useEffect(
+    () => () => {
+      if (pairRun.current) pairRun.current.stopped = true;
+    },
+    []
+  );
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
@@ -127,7 +134,6 @@ export default function Welcome() {
   // pull 轮询:1.5s→30s 后 5s;tab 隐藏时暂停(资源与滥用面)
   useEffect(() => {
     if (tab !== "device" || !pull || pairView) return;
-    pairStopped.current = false;
     const startedAt = Date.now();
     let timer: number | undefined;
     const tick = async () => {
@@ -156,7 +162,6 @@ export default function Welcome() {
     };
     timer = window.setTimeout(tick, 1500);
     return () => {
-      pairStopped.current = true;
       if (timer) window.clearTimeout(timer);
     };
   }, [tab, pull, pairView]);
@@ -171,10 +176,13 @@ export default function Welcome() {
   // ---------- push:扫码/粘贴链接 → claim → 等确认 ----------
 
   const runPairPoll = async (base: string, code: string, deviceId: string, secret: string, expiresAt: number) => {
+    if (pairRun.current) pairRun.current.stopped = true;
+    const run = { stopped: false };
+    pairRun.current = run;
     const startedAt = Date.now();
-    while (!pairStopped.current) {
+    while (!run.stopped) {
       await sleep(Date.now() - startedAt < 30_000 ? 1500 : 5000);
-      if (pairStopped.current) return;
+      if (run.stopped) return;
       try {
         const r = await pollPairing(base, code, deviceId);
         if (r.status === "approved") {
@@ -208,6 +216,7 @@ export default function Welcome() {
   };
 
   const startPair = async (base: string, code: string) => {
+    if (pairRun.current) pairRun.current.stopped = true;
     setPairView({ step: "claiming" });
     try {
       const r = await claimPairing(base, code);
@@ -356,7 +365,10 @@ export default function Welcome() {
             <>
               <p className="text-sm text-red-600 py-4">{pairErrorText(pairView.kind)}</p>
               <button
-                onClick={() => setPairView(null)}
+                onClick={() => {
+                  if (pairRun.current) pairRun.current.stopped = true;
+                  setPairView(null);
+                }}
                 className="w-full py-3 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors"
               >
                 {t("common.close")}
