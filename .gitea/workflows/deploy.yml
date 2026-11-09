@@ -64,6 +64,13 @@ jobs:
         run: |
           set -eu
           cd /tmp/polyphony-src
+          # 回滚点取「线上正在跑的容器」的镜像,且必须在构建之前:构建会把 latest 改指新镜像,
+          # 之后再 tag latest→rollback 回滚点就成了新版本自己(v4.0.2 部署实踩)
+          if docker inspect polyphony >/dev/null 2>&1; then
+            docker tag "$(docker inspect -f '{{.Image}}' polyphony)" polyphony:rollback
+          else
+            echo "首次部署，无回滚镜像"
+          fi
           n=0
           until docker compose build; do
             n=$((n+1))
@@ -79,13 +86,13 @@ jobs:
         run: |
           set -eu
           cd /tmp/polyphony-src
-          # 留回滚点：换容器前把当前 latest 固化为 rollback
-          if docker image inspect polyphony:latest >/dev/null 2>&1; then
-            docker tag polyphony:latest polyphony:rollback
-          else
-            echo "首次部署，无回滚镜像"
+          # 先按名停掉并删除旧容器:它可能是别的 compose 项目起的(如手动回滚时在 /tmp/polyphony-rollback 下 up),
+          # 此时 --force-recreate 不认、直接报 container name already in use(v4.0.2 部署实踩)。
+          # stop -t 15 与 stop_grace_period 一致,让服务端退出前刷盘
+          if docker inspect polyphony >/dev/null 2>&1; then
+            docker stop -t 15 polyphony && docker rm polyphony
           fi
-          docker compose up -d --force-recreate
+          docker compose up -d
           docker image prune -f >/dev/null 2>&1 || true
 
       - name: 验证（health + 双端收敛冒烟；失败自动回滚）
@@ -117,7 +124,8 @@ jobs:
             if docker image inspect polyphony:rollback >/dev/null 2>&1; then
               cd /tmp/polyphony-src
               docker tag polyphony:rollback polyphony:latest
-              docker compose up -d --force-recreate
+              docker stop -t 15 polyphony 2>/dev/null; docker rm -f polyphony 2>/dev/null
+              docker compose up -d
               sleep 5
               if docker exec polyphony wget -qO- http://127.0.0.1:9091/health 2>/dev/null | grep -q '"status":"ok"'; then
                 echo "✅ 已回滚，线上恢复旧版本（本次构建仍标记失败，请排查后重推）"
