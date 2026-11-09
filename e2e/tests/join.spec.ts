@@ -42,10 +42,11 @@ test.describe("/join 分流", () => {
     await expect(paneBtn).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(codeA, { exact: true })).toHaveCount(0);
 
-    // /join 直达路径同样截断
+    // /join 直达路径同样截断:已登录落到完整编辑器页(与「有凭据:账号名直进编辑器」一致),
+    // 地址里的码必须恰好是截断后的 8 位(后面紧跟 &name=,不能是带 ZZ 的原码)。
+    // 注:编辑器页没有「完整编辑器」按钮(那是首页面板上的入口),此前按它断言,9e30ad4 隐藏文档码后一直误报。
     await page.goto(`/join?code=${longB}`);
-    await expect(page.getByRole("button", { name: "完整编辑器" })).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page).toHaveURL(new RegExp(`/editor\\?code=${codeB}&name=`), { timeout: 10_000 });
+    await expect(page.locator('[contenteditable="true"]').first()).toBeVisible({ timeout: 10_000 });
   });
 });
