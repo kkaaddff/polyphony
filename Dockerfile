@@ -41,9 +41,9 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 COPY --from=serverdeps /build/server/node_modules ./server/node_modules
-COPY server/index.js server/auth.js server/rooms.js server/db.js server/resetV3.js \
-     server/sweeper.js server/docStore.js server/pairing.js server/attachments.js \
-     server/exporter.js server/convergence-smoke.mjs ./server/
+# 服务端源码按通配复制(单测由 .dockerignore 排除):逐个列文件名曾漏掉新增的 yjs.js,
+# 镜像一启动就 ERR_MODULE_NOT_FOUND(v4.0.1/4.0.2 实踩)
+COPY server/*.js server/convergence-smoke.mjs ./server/
 COPY server/routes ./server/routes
 COPY --from=webbuild /build/dist ./public
 

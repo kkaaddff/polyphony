@@ -17,3 +17,4 @@ logs
 .env*
 Dockerfile
 docker-compose.yml
+server/*.test.js
