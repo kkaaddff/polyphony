@@ -1,6 +1,6 @@
 {
   "name": "polyphony",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "private": true,
   "description": "复调 Polyphony —— Many voices. One score. 实时协同文档编辑（Yjs CRDT）",
   "repository": {

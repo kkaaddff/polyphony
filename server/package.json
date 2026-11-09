@@ -1,6 +1,6 @@
 {
   "name": "polyphony-server",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Polyphony collaboration server (y-websocket relay + static hosting)",
   "main": "index.js",
   "type": "module",
