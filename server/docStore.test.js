@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import * as Y from 'yjs';
+import { createRequire } from 'node:module';
+import Y from './yjs.js';
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'polyphony-doc-d-'));
 process.env.UPLOADS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'polyphony-doc-u-'));
@@ -66,6 +67,42 @@ test('快照往返:bindState 读盘 → 编辑 → writeState → 卸载重载�
   assert.equal(d2.getMap('meta').get('roomName'), '会议纪要');
   const row = getDb().prepare('SELECT name FROM docs WHERE code = ?').get(code);
   assert.equal(row.name, '会议纪要'); // L25:文档名单源
+});
+
+test('快照重载后仍接受客户端更新:与 y-websocket 共用同一 Yjs 实例(双实例回归)', () => {
+  const { account } = mkAccount();
+  const { code } = store.createDoc({ ownerId: account.id, now: T0 });
+  const persistence = store.makePersistence();
+
+  // 客户端与首个服务端文档协同,写库后卸载
+  const client = new Y.Doc();
+  client.getText('document').insert(0, 'first');
+  const s1 = new Y.Doc();
+  persistence.bindState(code, s1);
+  Y.applyUpdate(s1, Y.encodeStateAsUpdate(client));
+  persistence.writeState(code, s1);
+  s1.destroy();
+
+  // y-websocket(CJS)真实路径:它 require('yjs') 建文档,bindState 往里灌快照
+  const wsUtils = createRequire(import.meta.url)('y-websocket/bin/utils');
+  wsUtils.setPersistence(persistence);
+  const s2 = wsUtils.getYDoc(code); // 内部 bindState,与线上 WS 连接同路径
+  try {
+    assert.equal(s2.getText('document').toString(), 'first');
+
+    // 客户端接着写(依赖快照里已有的结构体):必须整合进服务端文档,而不是积压为 pending
+    const sv = Y.encodeStateVector(s2);
+    client.getText('document').insert(5, ' second');
+    Y.applyUpdate(s2, Y.encodeStateAsUpdate(client, sv));
+    assert.equal(s2.getText('document').toString(), 'first second');
+    assert.equal(s2.store.pendingStructs, null);
+  } finally {
+    // 断言失败也要释放:WSSharedDoc 的 awareness 定时器会让测试进程挂住
+    wsUtils.docs.delete(code);
+    wsUtils.setPersistence(null);
+    s2.awareness.destroy();
+    s2.destroy();
+  }
 });
 
 test('防抖写库:更新静默 2s 后自动落库(不等 writeState)', async () => {
@@ -218,4 +255,55 @@ test('listTrash:只列本人所有的 trashed 文档', () => {
   assert.equal(list.length, 1);
   assert.equal(list[0].code, da.code);
   assert.equal(list[0].trashReason, 'owner');
+});
+
+test('textPreview:取第一行有内容的纯文本,去 Markdown 标记,按码点截 40', () => {
+  const p = store.textPreview;
+  assert.equal(p(''), '');
+  assert.equal(p('\n\n   \n'), '');
+  assert.equal(p('# 周报 **草稿**\n正文'), '周报 草稿');
+  assert.equal(p('\n---\n> 引用一句'), '引用一句');
+  assert.equal(p('- [ ] 买牛奶\n- [x] 写周报'), '买牛奶');
+  assert.equal(p('1. 第一步'), '第一步');
+  assert.equal(p('![图](/uploads/AB/x.png)\n看 [链接](https://e.com) 吧'), '看 链接 吧');
+  assert.equal(p('```\ncode()\n```'), 'code()');
+  assert.equal(p('价格 5\\*3&#x20;元'), '价格 5*3 元');
+  assert.equal(p('| --- | :-: |\n表后文字'), '表后文字');
+  const long = '😀'.repeat(50);
+  assert.equal(Array.from(p(long)).length, 40);
+});
+
+test('docPreview:活文档读内存;卸载后读快照(缓存随 writeState 刷新);列表/回收站带 preview', () => {
+  const { account } = mkAccount();
+  const { code } = store.createDoc({ ownerId: account.id, now: T0 });
+  assert.equal(store.docPreview(code), ''); // 无快照
+
+  const persistence = store.makePersistence();
+  const d1 = new Y.Doc();
+  persistence.bindState(code, d1);
+  d1.getText('document').insert(0, '## 待办\n明天开会');
+  assert.equal(store.docPreview(code), '待办'); // 活文档:未落盘也即时可见
+  d1.getText('document').delete(0, 6);
+  persistence.writeState(code, d1);
+  d1.destroy();
+  assert.equal(store.docPreview(code), '明天开会'); // 卸载后:快照落盘时刷新的缓存
+
+  store.trashDoc(code, 'manual', T0 + 1);
+  const entry = store.listTrash(account.id).find((x) => x.code === code);
+  assert.equal(entry.preview, '明天开会');
+});
+
+test('liveDocName:活文档即时返回内存名(不等防抖落库);卸载后 null', () => {
+  const { account } = mkAccount();
+  const { code } = store.createDoc({ ownerId: account.id, now: T0 });
+  assert.equal(store.liveDocName(code), null);
+  const persistence = store.makePersistence();
+  const d = new Y.Doc();
+  persistence.bindState(code, d);
+  d.getMap('meta').set('roomName', '刚改的名');
+  assert.equal(store.liveDocName(code), '刚改的名');
+  assert.equal(getDb().prepare('SELECT name FROM docs WHERE code = ?').get(code).name, ''); // 库里还没落
+  persistence.writeState(code, d);
+  d.destroy();
+  assert.equal(store.liveDocName(code), null);
 });

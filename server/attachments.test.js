@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import * as Y from 'yjs';
+import Y from './yjs.js';
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'polyphony-att-d-'));
 process.env.UPLOADS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'polyphony-att-u-'));

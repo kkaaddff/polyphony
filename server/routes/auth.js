@@ -12,6 +12,7 @@ import {
   restoreAccount,
 } from '../auth.js';
 import { listRooms, enterRoom, leaveRooms } from '../rooms.js';
+import { docPreview, liveDocName } from '../docStore.js';
 import { countPendingPairings } from '../pairing.js';
 
 /** 错误码 → HTTP 状态(统一 E_ 前缀;新增码时同步客户端 i18n 表)。 */
@@ -159,6 +160,10 @@ export function roomsRouter(deps) {
     res.json({
       rooms: listRooms(req.account.id).map((x) => ({
         ...x,
+        // 打开中的文档取内存里的当前名:库里的名随快照 2s 防抖落盘,刚改名就回列表会读到旧名
+        name: liveDocName(x.code) ?? x.name,
+        // 未命名文档在列表里以正文开头代替标题(客户端:name || preview || 「未命名文档」)
+        preview: docPreview(x.code),
         userCount: deps.liveUserCount(x.code),
       })),
       pendingPairings: countPendingPairings(req.account.id),

@@ -4,7 +4,7 @@
 // - 防抖写库(静默 2s / 最长 10s);最后一人断开立即写并卸载(内存不再泄漏)
 // - 停写标志:purge 先停写再断开再删,防止 writeState 把快照写回(L19)
 // - 文档名单源:写库时从 meta.roomName 同步到 docs.name(L25)
-import * as Y from 'yjs';
+import Y from './yjs.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -120,6 +120,7 @@ export function purgeDoc(code, now = Date.now()) {
     lastAccessFlushed.delete(docCode);
     return attachments.map((a) => a.key);
   });
+  PREVIEW_CACHE.delete(docCode);
 
   const dir = path.join(uploadsDir(), docCode);
   if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
@@ -203,7 +204,66 @@ export function listTrash(ownerId) {
     .prepare(
       "SELECT code, name, trash_reason AS trashReason, trashed_at AS trashedAt FROM docs WHERE owner_id = ? AND status = 'trashed' ORDER BY trashed_at DESC"
     )
-    .all(ownerId);
+    .all(ownerId)
+    .map((row) => ({ ...row, preview: docPreview(row.code) }));
+}
+
+// ---------- 列表预览(未命名文档在列表里以正文开头代替标题) ----------
+
+const PREVIEW_MAX = 40;
+/** 非活文档的预览缓存(code → 文本);快照落盘时刷新、purge 时删除,读不到才解码一次快照。 */
+const PREVIEW_CACHE = new Map();
+
+/**
+ * Markdown 正文 → 第一行有内容的纯文本(去图片/链接地址/HTML/列表与标题标记/强调符号/MDX 转义),
+ * 最多 PREVIEW_MAX 个字符(按码点截,不切坏 emoji)。全空返回 ''。
+ */
+export function textPreview(markdown) {
+  for (const raw of String(markdown ?? '').split('\n')) {
+    const line = raw
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ') // 图片
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // 链接只留文字
+      .replace(/<[^>]+>/g, ' ') // HTML 标签
+      .replace(/&(?:nbsp|#x20|#32);/g, ' ') // MDXEditor 写出的空格实体
+      .replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?/, '') // 列表 / 任务列表
+      .replace(/^\s*(?:#{1,6}|>+)\s*/, '') // 标题 / 引用
+      .replace(/(?<!\\)[*_~`]+/g, '') // 强调 / 行内代码标记(转义的保留)
+      .replace(/\\([\\`*_{}[\]()#+\-.!|~>])/g, '$1') // MDX 转义还原
+      .replace(/\s+/g, ' ')
+      .trim();
+    // 跳过表格分隔行、分割线、代码围栏这类只剩符号的行
+    if (line && !/^[-*_=|:\s]+$/.test(line)) return Array.from(line).slice(0, PREVIEW_MAX).join('');
+  }
+  return '';
+}
+
+/** 活文档的当前共享名(内存 meta,不等 2s 防抖落库);未加载返回 null。 */
+export function liveDocName(code) {
+  const live = YDOCS.get(String(code ?? '').toUpperCase());
+  return live ? String(live.getMap('meta').get('roomName') ?? '').slice(0, 40) : null;
+}
+
+/** 文档列表预览:活文档读内存(始终最新),否则用缓存/解码快照。 */
+export function docPreview(code) {
+  const docCode = String(code ?? '').toUpperCase();
+  const live = YDOCS.get(docCode);
+  if (live) return textPreview(live.getText('document').toString());
+  if (PREVIEW_CACHE.has(docCode)) return PREVIEW_CACHE.get(docCode);
+  const row = getDb().prepare('SELECT state FROM docs WHERE code = ?').get(docCode);
+  let preview = '';
+  if (row?.state) {
+    const doc = new Y.Doc();
+    try {
+      Y.applyUpdate(doc, row.state);
+      preview = textPreview(doc.getText('document').toString());
+    } catch {
+      /* 快照异常:按无预览处理 */
+    } finally {
+      doc.destroy();
+    }
+  }
+  PREVIEW_CACHE.set(docCode, preview);
+  return preview;
 }
 
 // ---------- 快照持久化(setPersistence 接入 y-websocket) ----------
@@ -215,11 +275,13 @@ function writeSnapshot(code, ydoc, now = Date.now()) {
   if (slot && !slot.writable) return; // 停写后一律空操作(L19)
   const state = Y.encodeStateAsUpdate(ydoc);
   const roomName = String(ydoc.getMap('meta').get('roomName') ?? '').slice(0, 40);
+  const text = ydoc.getText('document').toString();
   // 快照与引用 diff 同一事务;refs 无变化时 applyRefs 不写任何行(L20)
   withTx(() => {
     getDb().prepare('UPDATE docs SET state = ?, name = ? WHERE code = ?').run(state, roomName, code);
-    applyRefs(code, ydoc.getText('document').toString(), now);
+    applyRefs(code, text, now);
   });
+  PREVIEW_CACHE.set(code, textPreview(text));
   if (slot) {
     slot.dirty = false;
     slot.lastWrite = now;
