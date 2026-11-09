@@ -2,7 +2,9 @@
 // TauriActivity 生成代码 handleBackNavigation=false,返回事件交给 app 插件 → 前端
 // 不监听就什么都不发生。这里做成一个后进先出的处理栈:
 //   弹层/扫码等「可关闭的东西」打开时压栈,返回先关它;
-//   栈空时:WebView 能后退就 history.back(),否则退出 App(到桌面)。
+//   栈空时:WebView 能后退就 history.back(),否则把 App 退到后台(进程保留)。
+// 不用 app.exit():Tauri Android 的 exit 会让进程在析构阶段原生崩溃(FORTIFY destroyed mutex),
+// 系统随后拉起再崩一次 → 用户看到「再启动闪退一次」。详见 src-tauri/src/lib.rs move_task_to_back。
 // 非 Android Tauri 环境(Web/桌面)全部为空操作。
 import { useEffect, useRef } from "react";
 import { isAndroidTauri } from "./index";
@@ -25,20 +27,21 @@ let installed = false;
 export async function installBackButton(): Promise<void> {
   if (installed || !isAndroidTauri()) return;
   installed = true;
-  const { onBackButtonPress, exit } = await import("@tauri-apps/api/app");
+  const { onBackButtonPress } = await import("@tauri-apps/api/app");
+  const { invoke } = await import("@tauri-apps/api/core");
   await onBackButtonPress(({ canGoBack }) => {
     const top = stack[stack.length - 1];
     if (top) {
       top();
       return;
     }
-    // 首页/欢迎页是导航根:不再 history.back 回到别的根页面,直接退出
+    // 首页/欢迎页是导航根:不再 history.back 回到别的根页面,直接退到后台
     const atRoot = ["/", "/welcome"].includes(window.location.pathname);
     if (canGoBack && !atRoot) {
       window.history.back();
       return;
     }
-    void exit(0);
+    void invoke("move_task_to_back");
   });
 }
 

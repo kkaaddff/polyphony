@@ -2,7 +2,7 @@
 // 最近房间数据由前端（storage.ts）通过 set_recent_rooms 推过来重建菜单；
 // 菜单点击以事件发回前端导航（前端在 platform/tray.ts 订阅）。
 // 托盘/菜单是桌面专属能力：mobile 目标下 tauri::tray/menu 模块不存在，
-// 相关代码整体 cfg(desktop) 门控；移动端仅注册扫码插件。
+// 相关代码整体 cfg(desktop) 门控；移动端注册扫码插件 + Android 根页返回命令。
 #[cfg(desktop)]
 use serde::{Deserialize, Serialize};
 #[cfg(desktop)]
@@ -93,6 +93,22 @@ fn set_recent_rooms(app: AppHandle, rooms: Vec<RecentRoom>, locale: String) -> R
     Ok(())
 }
 
+/// Android 根页返回:把任务退到后台(进程保留),等同 Android 12+ 对启动器根 Activity 的系统默认行为。
+/// 不能用 app.exit():Tauri 在 Android 上 finishAffinity 后由 tao 调 std::process::exit,
+/// C++ 静态析构与仍在跑的 WebView 线程竞争 → FORTIFY「pthread_mutex_lock called on a destroyed mutex」
+/// 原生崩溃;MIUI 随后还会把顶层 Activity 拉起再崩一次,用户看到的就是「再启动闪退一次」(真机实踩)。
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn move_task_to_back(window: tauri::WebviewWindow) -> Result<(), String> {
+    window
+        .with_webview(|wv| {
+            wv.jni_handle().exec(|env, activity, _webview| {
+                let _ = env.call_method(activity, "moveTaskToBack", "(Z)Z", &[jni::objects::JValue::Bool(1)]);
+            });
+        })
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -101,6 +117,10 @@ pub fn run() {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    }
+    #[cfg(target_os = "android")]
+    {
+        builder = builder.invoke_handler(tauri::generate_handler![move_task_to_back]);
     }
 
     // 托盘仅桌面

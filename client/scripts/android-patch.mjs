@@ -13,6 +13,8 @@
 //      运行时权限；缺失时 WebView 内所有 http://<局域网IP> 请求直接失败
 //      （net::ERR_LOCAL_NETWORK_PERMISSION_MISSING，v4 真机联调实踩）。
 //      清单声明在下面补；运行时申请要写进 MainActivity（同样是生成文件，用本脚本打补丁）。
+//   7. 非沉浸式安全区 —— MainActivity 把系统栏 inset 作内容区 padding 吃掉，WebView 不画进
+//      状态栏/手势条（模板 enableEdgeToEdge + targetSdk 35+ 强制 edge-to-edge，无法用主题关闭）。
 // 用法：在 client/ 下 `node scripts/android-patch.mjs`（npm run android:init 会自动带）
 import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -207,6 +209,49 @@ if (!xml.includes('android:windowSoftInputMode="adjustResize"')) {
           ].join("\n")
         );
         added.push("焦点归还");
+      }
+      // 非沉浸式(全局安全区):Tauri 模板 enableEdgeToEdge() + targetSdk 35+ 强制 edge-to-edge
+      // (SDK 36 起主题 opt-out 失效),WebView 画进状态栏/手势条下面,每个页面、弹层、遮罩都得自己
+      // 垫 env(safe-area-inset-*),漏一处就顶进状态栏。这里在原生层把系统栏 inset 作为内容区 padding
+      // 吃掉:WebView 从状态栏下沿开始、到手势条上沿结束,safe-area 归零(CSS 里的 env() 自动变 0);
+      // 状态栏/手势条区域显示内容区的纯白底 + 深色图标。IME inset 扣掉已垫的底部后照常下发,
+      // 键盘弹起时 visualViewport 收缩逻辑(lib/viewport.ts)不变。
+      addImports([
+        "androidx.core.view.ViewCompat",
+        "androidx.core.view.WindowCompat",
+        "androidx.core.view.WindowInsetsCompat",
+      ]);
+      if (!kt.includes("applySystemBarPadding()")) {
+        kt = kt.replace(
+          "    super.onCreate(savedInstanceState)\n",
+          "    super.onCreate(savedInstanceState)\n    applySystemBarPadding()\n"
+        );
+        added.push("安全区调用");
+      }
+      if (!kt.includes("fun applySystemBarPadding")) {
+        insertAtClassEnd(
+          [
+            "",
+            "  // 非沉浸式:系统栏 inset 作内容区 padding 吃掉,WebView 不再画进状态栏/手势条(android-patch.mjs)",
+            "  private fun applySystemBarPadding() {",
+            "    val content = findViewById<android.view.View>(android.R.id.content)",
+            "    content.setBackgroundColor(android.graphics.Color.WHITE)",
+            "    ViewCompat.setOnApplyWindowInsetsListener(content) { v, insets ->",
+            "      val bars = insets.getInsets(",
+            "        WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()",
+            "      )",
+            "      v.setPadding(bars.left, bars.top, bars.right, bars.bottom)",
+            "      insets.inset(bars.left, bars.top, bars.right, bars.bottom)",
+            "    }",
+            "    WindowCompat.getInsetsController(window, window.decorView).apply {",
+            "      isAppearanceLightStatusBars = true",
+            "      isAppearanceLightNavigationBars = true",
+            "    }",
+            "  }",
+            "",
+          ].join("\n")
+        );
+        added.push("安全区实现");
       }
       if (kt !== original) {
         writeFileSync(activityPath, kt);

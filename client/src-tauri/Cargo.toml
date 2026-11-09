@@ -24,3 +24,7 @@ serde_json = "1"
 # 扫码插件仅移动端编入（桌面无原生扫码，走 jsQR+摄像头网页方案）
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"
+
+# 根页返回 = moveTaskToBack(经 wry 的 JniHandle 调 Activity 方法;版本与 wry 内部一致)
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

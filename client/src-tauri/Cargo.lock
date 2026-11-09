@@ -2233,6 +2233,7 @@ dependencies = [
 name = "polyphony"
 version = "4.0.0"
 dependencies = [
+ "jni",
  "serde",
  "serde_json",
  "tauri",
