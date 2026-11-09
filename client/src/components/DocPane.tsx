@@ -1,9 +1,9 @@
 // 首页右栏「轻量文档面板」(v4.0 联调反馈图9):
 // 选中列表项后原地展示文档内容,可编辑、可改名、可邀请/导出——完整编辑器的精简版。
 // 用户列表做成右上角可展开/折叠的悬浮徽标。WS 连接随 code 动态建立/销毁。
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { MDXEditor } from "@mdxeditor/editor";
+import { MDXEditor, type MDXEditorMethods } from "@mdxeditor/editor";
 import { RoomHeader } from "@/components/RoomHeader";
 import { UsersPanel } from "@/components/UsersPanel";
 import { createEditorPlugins } from "@/components/editorConfig";
@@ -100,15 +100,47 @@ export function DocPane({ code, userName, userId, onClose, onUnavailable }: DocP
     [code, onUnavailable]
   );
 
+  // MDXEditor 的 markdown 属性只在挂载时读一次:之后的内容(服务端首次同步、他人输入)必须经
+  // ref.setMarkdown 写进编辑器。此前直接 onContentChange: setContent,面板打开后就再也看不到
+  // 新内容——而 applyLocalChange 按「真实正文 vs 编辑器内容」做 diff,在空白/过期的编辑器里
+  // 敲一个字就会把全文删掉,对所有人生效。与 Editor.tsx / MobileDocView 同一套写法。
+  const editorRef = useRef<MDXEditorMethods | null>(null);
+  const contentRef = useRef("");
+  const fromRemote = useRef(false);
+  const remoteTimer = useRef<number | undefined>(undefined);
+
   const collab = useCollaboration({
     roomCode: code,
     userName,
     userId,
-    onContentChange: setContent,
+    onContentChange: (next) => {
+      const text = next as string;
+      if (text === contentRef.current) return;
+      contentRef.current = text;
+      setContent(text);
+      // fromRemote 只用来忽略 setMarkdown 自身的 onChange 回声,远端更新本身一律写入
+      fromRemote.current = true;
+      editorRef.current?.setMarkdown(text);
+      window.clearTimeout(remoteTimer.current);
+      remoteTimer.current = window.setTimeout(() => {
+        fromRemote.current = false;
+      }, 0);
+    },
     onUsersChange: setUsers,
     onRoomNameChange: setRoomName,
     onDocUnavailable,
   });
+
+  const { applyLocalChange } = collab;
+  const handleChange = useCallback(
+    (markdown: string, initialNormalize: boolean) => {
+      if (initialNormalize || fromRemote.current) return;
+      contentRef.current = markdown;
+      setContent(markdown);
+      applyLocalChange(markdown);
+    },
+    [applyLocalChange]
+  );
 
   const doExport = async () => {
     setDocBusy(true);
@@ -188,9 +220,9 @@ export function DocPane({ code, userName, userId, onClose, onUnavailable }: DocP
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg flex-1 overflow-hidden flex flex-col">
           <div className="flex-1 overflow-auto">
             <MDXEditor
-              key={code}
+              ref={editorRef}
               markdown={content}
-              onChange={collab.applyLocalChange}
+              onChange={handleChange}
               plugins={plugins}
               contentEditableClassName="focus:outline-none min-h-[300px] p-4 text-gray-900 dark:text-gray-100"
             />
