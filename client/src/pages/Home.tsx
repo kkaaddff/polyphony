@@ -4,7 +4,15 @@ import { upsertRecentRoom } from "@/lib/storage";
 import { formatRelative } from "@/lib/roomCode";
 import { getServerBase, saveServer } from "@/lib/serverConfig";
 import { buildJoinUrl } from "@/lib/qr";
-import { authFetch, clearAllLocalData, clearRoomCache, logoutRemote, useAccount } from "@/lib/auth";
+import {
+  authFetch,
+  cacheRooms,
+  clearAllLocalData,
+  clearRoomCache,
+  logoutRemote,
+  readCachedRooms,
+  useAccount,
+} from "@/lib/auth";
 import { fetchPairings, type PairingInfo } from "@/lib/pairing";
 import { createDoc, getDocStatus, deleteDoc } from "@/lib/docs";
 import { parseIntake } from "@/lib/intake";
@@ -20,15 +28,11 @@ import { DeleteOutlined, QrcodeOutlined, ScanOutlined, CloseOutlined } from "@an
 import { isDesktopTauri } from "@/platform";
 import { onTrayAction, pushRecentRooms } from "@/platform/tray";
 import { useBackHandler } from "@/platform/backButton";
-
-type MyRoom = {
-  code: string;
-  name: string;
-  lastUsed: number;
-  userCount: number;
-  status: "active" | "trashed";
-  isOwner: boolean;
-};
+import { docTitle } from "@/lib/docTitle";
+import { useIsMobile } from "@/lib/useIsMobile";
+import { MobileHome } from "@/components/mobile/MobileHome";
+import { MobileDocView } from "@/components/mobile/MobileDocView";
+import type { MyRoom } from "@/types";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -36,12 +40,21 @@ export default function Home() {
   const { t, locale } = useT();
   const { account } = useAccount();
   const serverBase = useMemo(() => getServerBase(), []);
+  // 移动端(<768px)整页换成原生化界面(components/mobile/);桌面双栏不变
+  const isMobile = useIsMobile();
 
   // ?join=CODE:扫码落地(未登录设备登录后转来)预填房间码
   const [roomCode, setRoomCode] = useState(
     () => (searchParams.get("join") ?? "").toUpperCase().slice(0, 8)
   );
-  const [myRooms, setMyRooms] = useState<MyRoom[]>([]);
+  // 离线冷启动先用上次在线的房间簿(在线人数归零),联网成功后覆盖并刷新快照
+  const [myRooms, setMyRooms] = useState<MyRoom[]>(
+    () => readCachedRooms<MyRoom>()?.map((r) => ({ ...r, userCount: 0 })) ?? []
+  );
+  const roomsFromServer = useCallback((rooms: MyRoom[]) => {
+    setMyRooms(rooms);
+    cacheRooms(rooms);
+  }, []);
   const [serverOk, setServerOk] = useState<boolean | null>(null);
   const [qrFor, setQrFor] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
@@ -52,6 +65,7 @@ export default function Home() {
   // 红点来源:/rooms 的 pendingPairings(V11,任一已登录设备可确认)
   const [pendingPairings, setPendingPairings] = useState(0);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [liveNames, setLiveNames] = useState<Record<string, { name: string; at: number }>>({});
   // 右栏选中的文档(v4.0 联调反馈图9:列表选中 → 原地展示可编辑内容)
   const [activeCode, setActiveCode] = useState<string | null>(null);
   // Android 返回键:文档面板打开时(移动端全屏接管)先回列表,而不是直接退出 App
@@ -61,14 +75,23 @@ export default function Home() {
   const fetchMine = useCallback(async () => {
     try {
       const res = await authFetch(`${getServerBase()}/rooms`);
+      // 非 2xx 不当作「列表为空」:否则一次服务端报错就把离线快照覆盖成空
+      if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
-      setMyRooms(Array.isArray(data?.rooms) ? data.rooms : []);
+      roomsFromServer(Array.isArray(data?.rooms) ? data.rooms : []);
       setPendingPairings(Number(data?.pendingPairings ?? 0));
       setServerOk(true);
     } catch {
       setServerOk(false);
     }
-  }, []);
+  }, [roomsFromServer]);
+
+  // 离开/切换文档立即刷新列表:刚写的正文开头(未命名文档的列表标题)不必等 15s 轮询
+  const prevActive = useRef(activeCode);
+  useEffect(() => {
+    if (prevActive.current && prevActive.current !== activeCode) void fetchMine();
+    prevActive.current = activeCode;
+  }, [activeCode, fetchMine]);
 
   useEffect(() => {
     fetchMine();
@@ -124,7 +147,7 @@ export default function Home() {
         body: JSON.stringify({ code: upper }),
       })
         .then((r) => r.json())
-        .then((d) => Array.isArray(d?.rooms) && setMyRooms(d.rooms))
+        .then((d) => Array.isArray(d?.rooms) && roomsFromServer(d.rooms))
         .catch(() => {
           /* 登记失败不阻断进房 */
         });
@@ -133,6 +156,16 @@ export default function Home() {
     },
     [myRooms, t]
   );
+
+  // ?open=CODE:直接打开某文档(移动端扫码落地经 /editor 转来);处理一次后清掉参数
+  const openedRef = useRef(false);
+  useEffect(() => {
+    const code = searchParams.get("open");
+    if (!code || openedRef.current) return;
+    openedRef.current = true;
+    void enterRoom(code);
+    navigate("/", { replace: true });
+  }, [searchParams, enterRoom, navigate]);
 
   // 新建:服务端生成码,创建者即所有者;直接在右栏打开
   const handleCreateNew = async () => {
@@ -188,7 +221,7 @@ export default function Home() {
         body: JSON.stringify({ codes }),
       });
       const data = await res.json();
-      if (Array.isArray(data?.rooms)) setMyRooms(data.rooms);
+      if (Array.isArray(data?.rooms)) roomsFromServer(data.rooms);
       if (activeCode && codes.includes(activeCode)) setActiveCode(null);
       for (const c of codes) clearRoomCache(c);
     } catch {
@@ -196,20 +229,36 @@ export default function Home() {
     }
   };
 
+  const roomLabel = (code: string) => {
+    const room = myRooms.find((r) => r.code === code);
+    return room ? docTitle(room, t("common.unnamedDoc")) : t("common.unnamedDoc");
+  };
+
   const leaveSingle = (code: string) => {
-    if (!window.confirm(t("home.leaveSingleConfirm", { code }))) return;
+    if (!window.confirm(t("home.leaveSingleConfirm", { code: roomLabel(code) }))) return;
     void doLeave([code]);
   };
 
   // 所有者删除:进回收站,所有成员立即无法访问(30 天可恢复)
   const deleteSingle = async (code: string) => {
-    if (!window.confirm(t("docs.deleteConfirm", { code }))) return;
+    if (!window.confirm(t("docs.deleteConfirm", { name: roomLabel(code) }))) return;
     try {
       await deleteDoc(code);
       if (activeCode === code) setActiveCode(null);
       await fetchMine();
     } catch {
       alert(t("docs.deleteFail"));
+    }
+  };
+
+  // 移动端多选删除(确认已由 MobileHome 完成):自有文档进回收站,共享文档退出
+  const removeMany = async (own: string[], joined: string[]) => {
+    if (joined.length) await doLeave(joined);
+    if (own.length) {
+      const results = await Promise.allSettled(own.map((c) => deleteDoc(c)));
+      if (results.some((r) => r.status === "rejected")) alert(t("docs.deleteFail"));
+      if (activeCode && own.includes(activeCode)) setActiveCode(null);
+      await fetchMine();
     }
   };
 
@@ -260,18 +309,132 @@ export default function Home() {
   }, []);
 
   const activeRooms = myRooms.filter((r) => r.status === "active");
+  // 移动端列表叠加文档页里刚同步到的共享名(服务端落库有 2s 去抖,关文档立即刷新会拿到旧名);
+  // 30s 后让位于服务端数据,避免长期遮住别人后来的改名
+  const mobileRooms = activeRooms.map((r) => {
+    const live = liveNames[r.code];
+    return live && live.name !== r.name && Date.now() - live.at < 30_000 ? { ...r, name: live.name } : r;
+  });
+
+  const modals = (
+    <>
+      {qrFor && (
+        <QrModal
+          url={buildJoinUrl(serverBase, qrFor)}
+          title={t("qrModal.title")}
+          desc={t("qrModal.desc", { code: qrFor })}
+          onClose={() => setQrFor(null)}
+        />
+      )}
+      {shareSite && (
+        <QrModal url={serverBase} title={t("qrModal.siteTitle")} onClose={() => setShareSite(false)} />
+      )}
+      {scanOpen && <ScanModal onResult={handleScanResult} onClose={() => setScanOpen(false)} />}
+      {pairOpen && (
+        <PairModal
+          pairings={pairings}
+          refresh={refreshPairings}
+          onClose={() => setPairOpen(false)}
+        />
+      )}
+      {trashOpen && <TrashModal onClose={() => setTrashOpen(false)} onChanged={fetchMine} />}
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <>
+        <MobileHome
+          covered={activeCode !== null}
+          rooms={mobileRooms}
+          serverOk={serverOk}
+          accountName={account?.name ?? t("common.anonymous")}
+          accountId={account?.id}
+          pairNeedsConfirm={pairNeedsConfirm}
+          initialJoinCode={roomCode}
+          onOpen={(code) => void enterRoom(code)}
+          onCreate={() => void handleCreateNew()}
+          onScan={() => setScanOpen(true)}
+          onShare={setQrFor}
+          onRemove={(own, joined) => void removeMany(own, joined)}
+          onPair={() => setPairOpen(true)}
+          onTrash={() => setTrashOpen(true)}
+          onSettings={() => navigate("/settings")}
+          onShareSite={() => setShareSite(true)}
+          onLogout={() => void logout()}
+        />
+        {activeCode && account && (
+          <MobileDocView
+            code={activeCode}
+            initialName={mobileRooms.find((r) => r.code === activeCode)?.name}
+            userName={account.name}
+            userId={account.id}
+            onClose={() => {
+              setActiveCode(null);
+              void fetchMine(); // 改名等变化立即回到列表
+            }}
+            onUnavailable={handlePaneUnavailable}
+            onDelete={(code) => void deleteSingle(code)}
+            onLeave={leaveSingle}
+            onNameChange={(code, name) =>
+              setLiveNames((m) => (m[code]?.name === name ? m : { ...m, [code]: { name, at: Date.now() } }))
+            }
+          />
+        )}
+        {modals}
+      </>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100 overflow-hidden pt-[env(safe-area-inset-top)] box-border">
       {/* 顶栏:品牌居左;右上角用户名 + 头像菜单(登录其他设备/回收站/设置/分享/退出) */}
-      <header className="flex items-center justify-between px-6 py-3 shrink-0">
-        <div className="hidden md:flex items-baseline gap-3 min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900">{t("common.appName")}</h1>
-          <p className="text-sm text-gray-500 truncate hidden md:block">{t("common.taglineShort")}</p>
+      <header className="flex items-center gap-4 px-6 py-3 shrink-0">
+        <div className="hidden md:flex items-baseline gap-3 min-w-0 shrink">
+          <h1 className="text-2xl font-bold text-gray-900 shrink-0">{t("common.appName")}</h1>
+          <p className="text-sm text-gray-500 truncate hidden lg:block">{t("common.taglineShort")}</p>
         </div>
-        {/* ml-auto:品牌区在移动端 hidden 后,justify-between 只剩一个子元素会靠左;
-            身份区必须显式靠右,否则头像菜单面板锚在屏幕中段、右对齐展开后被左缘裁掉(真机实踩) */}
-        <div className="flex items-center gap-2 min-w-0 ml-auto">
+        {/* 加入/新建拆进顶栏(联调反馈):文档码输入(扫码作 suffix) + 加入 + 新建,左栏只留列表 */}
+        <form onSubmit={handleJoinRoom} className="ml-auto flex items-center gap-2 shrink-0">
+          <div className="relative w-44 lg:w-60">
+            <input
+              type="text"
+              id="roomCode"
+              value={roomCode}
+              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+              placeholder={t("home.roomCodePlaceholder")}
+              aria-label={t("home.roomCodePlaceholder")}
+              maxLength={8}
+              className="w-full h-10 pl-3 pr-10 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setScanOpen(true)}
+              title={t("home.scanBtnTitle")}
+              aria-label={t("home.scanBtn")}
+              className="absolute right-1 top-1/2 -translate-y-1/2 size-8 flex items-center justify-center rounded-md text-gray-500 hover:text-blue-600 hover:bg-gray-100 transition-colors"
+            >
+              <ScanOutlined className="text-base" />
+            </button>
+          </div>
+          <button
+            type="submit"
+            className="h-10 px-4 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors whitespace-nowrap"
+          >
+            {t("home.joinBtn")}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCreateNew()}
+            className="h-10 px-4 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow flex items-center gap-1 whitespace-nowrap"
+          >
+            <span>＋</span> {t("home.createBtn")}
+          </button>
+        </form>
+        <div className="h-6 w-px bg-gray-300/70 shrink-0" />
+        {/* 身份区必须贴右(加入表单的 ml-auto 把它推过去),否则头像菜单面板锚在屏幕中段、
+            右对齐展开后被左缘裁掉(真机实踩) */}
+        <div className="flex items-center gap-2 min-w-0 shrink-0">
           <span className="text-sm text-gray-700 font-medium truncate max-w-[10rem]">
             {account?.name ?? t("common.anonymous")}
           </span>
@@ -314,55 +477,12 @@ export default function Home() {
 
       {/* 主体:桌面双栏一屏;移动单列纵排(列表内部滚动) */}
       <main className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 px-4 md:px-6 pb-4 md:pb-6 pt-3 min-h-0">
-        {/* 左栏:加入表单(新建=小按钮) + 我的文档列表 + 管理(v4.0 联调反馈图9) */}
+        {/* 左栏:我的文档列表(加入/新建已移到顶栏) */}
         <section
           className={`w-full md:w-80 flex flex-col gap-3 min-h-0 shrink-0 ${
             activeCode ? "hidden md:flex" : "flex"
           }`}
         >
-          <form
-            onSubmit={handleJoinRoom}
-            className="shrink-0 bg-white rounded-2xl shadow-lg p-4 space-y-3"
-          >
-            {/* 扫码作为输入框的 suffix(联调反馈),不再单独占一个按钮位 */}
-            <div className="relative">
-              <input
-                type="text"
-                id="roomCode"
-                value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                placeholder={t("home.roomCodePlaceholder")}
-                aria-label={t("home.roomCodePlaceholder")}
-                maxLength={8}
-                className="w-full pl-4 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => setScanOpen(true)}
-                title={t("home.scanBtnTitle")}
-                aria-label={t("home.scanBtn")}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 size-9 flex items-center justify-center rounded-md text-gray-500 hover:text-blue-600 hover:bg-gray-100 transition-colors"
-              >
-                <ScanOutlined className="text-lg" />
-              </button>
-            </div>
-            {/* 加入 / 新建并排一排(联调反馈):加入为主、新建为次 */}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                className="flex-1 py-2.5 min-h-tap-44 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
-              >
-                {t("home.joinBtn")}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleCreateNew()}
-                className="flex-1 py-2.5 min-h-tap-44 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all shadow flex items-center justify-center gap-1"
-              >
-                <span>＋</span> {t("home.createBtn")}
-              </button>
-            </div>
-          </form>
 
           {/* 我的文档(服务端房间簿;列表内滚,一屏无外滚) */}
           <div className="flex-1 min-h-0 bg-white rounded-2xl shadow-lg flex flex-col">
@@ -382,11 +502,16 @@ export default function Home() {
                       <li key={room.code} className="relative">
                         {/* 整行可点:覆盖层按钮铺满行(操作按钮/复选框 z-10 置于其上)。
                             单行不换行 —— 文档名截断,「上次使用/在线人数」作第二行小字。 */}
-                        <div className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors">
+                        <div
+                          aria-current={activeCode === room.code ? "true" : undefined}
+                          className={`group flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                            activeCode === room.code ? "bg-blue-100/80" : "hover:bg-blue-50"
+                          }`}
+                        >
                           <button
                             type="button"
                             onClick={() => void enterRoom(room.code)}
-                            aria-label={room.name || t("common.unnamedDoc")}
+                            aria-label={docTitle(room, t("common.unnamedDoc"))}
                             className="absolute inset-0 z-0 rounded-lg"
                           />
                           <div className="pointer-events-none min-w-0 flex-1">
@@ -396,7 +521,7 @@ export default function Home() {
                                   activeCode === room.code ? "text-blue-600" : "text-gray-900"
                                 }`}
                               >
-                                {room.name || t("common.unnamedDoc")}
+                                {docTitle(room, t("common.unnamedDoc"))}
                               </span>
                             </div>
                             <p className="text-xs text-gray-500 truncate mt-0.5">
@@ -461,6 +586,8 @@ export default function Home() {
         >
           {activeCode && account ? (
             <DocPane
+              // 按文档码重挂:切换文档时内容/在线用户/文档名等状态全部从零开始,不带上一篇的残影
+              key={activeCode}
               code={activeCode}
               userName={account.name}
               userId={account.id}
@@ -478,26 +605,7 @@ export default function Home() {
         </section>
       </main>
 
-      {qrFor && (
-        <QrModal
-          url={buildJoinUrl(serverBase, qrFor)}
-          title={t("qrModal.title")}
-          desc={t("qrModal.desc", { code: qrFor })}
-          onClose={() => setQrFor(null)}
-        />
-      )}
-      {shareSite && (
-        <QrModal url={serverBase} title={t("qrModal.siteTitle")} onClose={() => setShareSite(false)} />
-      )}
-      {scanOpen && <ScanModal onResult={handleScanResult} onClose={() => setScanOpen(false)} />}
-      {pairOpen && (
-        <PairModal
-          pairings={pairings}
-          refresh={refreshPairings}
-          onClose={() => setPairOpen(false)}
-        />
-      )}
-      {trashOpen && <TrashModal onClose={() => setTrashOpen(false)} onChanged={fetchMine} />}
+      {modals}
     </div>
   );
 }

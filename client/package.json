@@ -15,10 +15,12 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.4",
+    "@lexical/rich-text": "^0.35.0",
     "@mdxeditor/editor": "^3.48.0",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-barcode-scanner": "^2.5.3",
     "jsqr": "^1.4.0",
+    "lexical": "^0.35.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

@@ -10,6 +10,7 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { IndexeddbPersistence } from "y-indexeddb";
 import { getServerBase } from "./serverConfig";
+import { clientLabel } from "@/platform";
 import { getToken } from "./auth";
 import { getUserColor } from "./userColors";
 import { User } from "@/types";
@@ -135,17 +136,21 @@ export function useCollaboration({
     metaRef.current = yMeta;
 
     const updateUsers = () => {
-      const states = Array.from(awareness.getStates().values());
-      const users: User[] = states
-        .map((state) => state?.user)
-        .filter(
-          (userState): userState is User & { color: string } => !!userState
-        )
-        .map((userState) => ({
-          id: userState.id,
-          name: userState.name,
-          color: userState.color ?? getUserColor(userState.id),
-        }));
+      // 按 awareness clientID 逐连接列出:同一账号多端在线是多条(靠 client 标签区分),本机排第一
+      const users: User[] = [];
+      awareness.getStates().forEach((state, clientId) => {
+        const u = state?.user as (User & { client?: string }) | undefined;
+        if (!u) return;
+        users.push({
+          id: u.id,
+          name: u.name,
+          color: u.color ?? getUserColor(u.id),
+          client: typeof u.client === "string" ? u.client : undefined,
+          clientId,
+          isSelf: clientId === awareness.clientID,
+        });
+      });
+      users.sort((a, b) => Number(!!b.isSelf) - Number(!!a.isSelf));
       cbsRef.current.onUsersChange(users);
     };
 
@@ -198,6 +203,7 @@ export function useCollaboration({
         id: userId,
         name: userName,
         color: getUserColor(userId),
+        client: clientLabel(),
       },
     });
     updateUsers();

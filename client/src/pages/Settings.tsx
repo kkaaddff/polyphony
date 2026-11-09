@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth";
 import { useAccount } from "@/lib/auth";
 import { copyText } from "@/lib/clipboard";
+import { DownOutlined } from "@ant-design/icons";
 import { useLocalePref, useT, type LocalePref } from "@/i18n";
 
 type TestResult =
@@ -135,28 +136,25 @@ export default function Settings() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-8 space-y-6">
-          {/* 界面语言：默认跟随系统，三选一即时生效 */}
+          {/* 界面语言:下拉选择(默认跟随系统),选中即时生效;原生 select 在手机上弹系统选择器 */}
           <div>
-            <span className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="localePref" className="block text-sm font-medium text-gray-700 mb-2">
               {t("settings.languageSection")}
-            </span>
-            <div className="flex gap-2" role="radiogroup" aria-label={t("settings.languageSection")}>
-              {localeOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={localePref === opt.value}
-                  onClick={() => setLocalePref(opt.value)}
-                  className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium border transition-colors ${
-                    localePref === opt.value
-                      ? "bg-blue-50 border-blue-400 text-blue-700"
-                      : "border-gray-300 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+            </label>
+            <div className="relative">
+              <select
+                id="localePref"
+                value={localePref}
+                onChange={(e) => setLocalePref(e.target.value as LocalePref)}
+                className="w-full appearance-none px-4 py-3 pr-10 border border-gray-300 rounded-lg bg-white text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              >
+                {localeOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <DownOutlined className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs text-gray-500" />
             </div>
           </div>
 

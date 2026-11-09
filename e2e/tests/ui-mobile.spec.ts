@@ -110,68 +110,108 @@ test.describe("/welcome(移动)", () => {
   });
 });
 
-test.describe("首页(移动单列)", () => {
-  test("单列纵排:创建按钮全宽;列表不裁切;图标按钮触达达标", async ({ page }) => {
+/** 长按(移动端多选入口):按住超过 450ms 再松开。 */
+async function longPress(page: Page, name: RegExp) {
+  const box = (await page.getByRole("button", { name }).boundingBox())!;
+  await page.mouse.move(box.x + 40, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(650);
+  await page.mouse.up();
+}
+
+test.describe("首页(移动原生化,v4.1)", () => {
+  test("列表页:大标题/搜索/分类/卡片不破版;顶栏与底部胶囊触达达标", async ({ page }) => {
     const acc = await loginTestAccount(page);
     await seedThreeDocs(page, acc.token);
 
     await expect(page.getByText("移动MOBROOM1")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "文档", exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder("搜索")).toBeVisible();
     await expectNoBreakout(page);
     await expectButtonsInView(page);
+    await expectTapSize(page, ["多选", "更多", "扫码加入", "新建文档"]);
 
-    // 移动端顶栏不显示品牌名(左上角留给内容;品牌在 welcome 页呈现)
-    await expect(
-      page.getByRole("heading", { name: "Polyphony", exact: true })
-    ).toBeHidden();
-
-    // 头像菜单:身份区必须靠右,面板完整落在视口内(真机实踩:justify-between 只剩一个
-    // 子元素时身份区跑到左侧,右对齐面板顶出屏幕左缘、文字被裁)
-    const avatar = page.getByTitle("账号菜单");
-    const avatarBox = (await avatar.boundingBox())!;
-    const vw = page.viewportSize()!.width;
-    expect(avatarBox.x + avatarBox.width).toBeGreaterThan(vw * 0.75);
+    // 左上角用户头像:点开抽屉(底部是账号名)
+    const avatar = page.getByRole("button", { name: `账号:${acc.name}` });
+    const avBox = (await avatar.boundingBox())!;
+    expect(avBox.x).toBeLessThan(60);
+    expect(avBox.width).toBeGreaterThanOrEqual(44);
     await avatar.click();
+    const drawer = page.getByRole("dialog", { name: "分类" });
+    await expect(drawer.getByText(acc.name)).toBeVisible();
+    await drawer.getByRole("button", { name: "关闭" }).click();
+    await expect(drawer).toHaveCount(0);
+
+    // 更多菜单:锚在右上角,面板完整落在视口内
+    const vw = page.viewportSize()!.width;
+    await page.getByTitle("更多").click();
     const menuBox = (await page.getByRole("menu").boundingBox())!;
     expect(menuBox.x).toBeGreaterThanOrEqual(0);
     expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(vw + 0.5);
     await page.keyboard.press("Escape");
-
-    // 加入 / 创建 并排一排,各占一半(联调反馈:扫码挪进输入框 suffix,两个动作同行)
-    const join = await page.getByRole("button", { name: "加入文档" }).boundingBox();
-    const create = await page.getByRole("button", { name: "创建新文档" }).boundingBox();
-    expect(Math.abs(join!.y - create!.y)).toBeLessThan(4);
-    expect(Math.abs(join!.width - create!.width)).toBeLessThan(4);
-    // 扫码 = 输入框内的 suffix 按钮
-    const scan = page.getByRole("button", { name: "扫码加入" });
-    await expect(scan).toBeVisible();
-    const scanBox = (await scan.boundingBox())!;
-    const inputBox = (await page.locator("#roomCode").boundingBox())!;
-    expect(scanBox.x).toBeGreaterThan(inputBox.x + inputBox.width / 2);
-    expect(scanBox.x + scanBox.width).toBeLessThanOrEqual(inputBox.x + inputBox.width);
-    expect(scanBox.y).toBeGreaterThan(inputBox.y);
-
-    // 文档行操作按钮触达(曾被裁出屏外的 ▦/✕)
-    await expectTapSize(page, ["创建新文档", "加入文档"]);
-    const qrBtns = page.getByTitle("显示二维码");
-    expect(await qrBtns.count()).toBeGreaterThan(0);
-    const qrBox = await qrBtns.first().boundingBox();
-    expect(Math.min(qrBox!.width, qrBox!.height)).toBeGreaterThanOrEqual(38);
-    // 所有者行操作是 🗑 删除(退出 ✕ 只属于成员行)
-    const delBtn = page.getByTitle("删除文档（移入回收站）").first();
-    const delBox = await delBtn.boundingBox();
-    expect(Math.min(delBox!.width, delBox!.height)).toBeGreaterThanOrEqual(38);
   });
 
-  test("所有者删除在移动端可用", async ({ page }) => {
+  test("搜索与分类过滤;分类抽屉计数", async ({ page }) => {
     const acc = await loginTestAccount(page);
-    await createDoc(acc.token, "移动删除");
-    await page.goto("/");
-    await expect(page.getByText("移动删除")).toBeVisible({ timeout: 10_000 });
-    page.once("dialog", (d) => d.accept());
-    await page.getByTitle("删除文档（移入回收站）").click();
-    // 主列表只放 active 文档:删除后行消失、空态出现;回收站内容走头像菜单弹窗
-    await expect(page.getByText("移动删除")).toHaveCount(0, { timeout: 10_000 });
+    await seedThreeDocs(page, acc.token);
+    await expect(page.getByText("移动MOBROOM2")).toBeVisible({ timeout: 10_000 });
+
+    await page.getByPlaceholder("搜索").fill("ROOM2");
+    await expect(page.getByText("移动MOBROOM2")).toBeVisible();
+    await expect(page.getByText("移动MOBROOM1")).toHaveCount(0);
+    await page.getByPlaceholder("搜索").fill("");
+
+    // 自建文档不出现在「共享给我」
+    await page.getByRole("button", { name: "共享给我", exact: true }).click();
     await expect(page.getByText("还没有打开过的文档")).toBeVisible();
+    await page.getByRole("button", { name: "全部", exact: true }).click();
+
+    await page.getByRole("button", { name: "分类" }).click();
+    const drawer = page.getByRole("dialog", { name: "分类" });
+    await expect(drawer.getByRole("button", { name: /全部文档\s*3/ })).toBeVisible();
+    await expectNoBreakout(page);
+    await drawer.getByRole("button", { name: /我创建的/ }).click();
+    await expect(drawer).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "我创建的", exact: true })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("长按进入多选:置顶排到最前;删除进回收站", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    await seedThreeDocs(page, acc.token);
+    await expect(page.getByText("移动MOBROOM1")).toBeVisible({ timeout: 10_000 });
+
+    await longPress(page, /移动MOBROOM1/);
+    await expect(page.getByRole("heading", { name: "已选中 1 项" })).toBeVisible();
+    await expectButtonsInView(page);
+    await page.getByRole("button", { name: "置顶" }).click();
+    await expect(page.getByRole("heading", { name: "文档", exact: true })).toBeVisible();
+    await expect(page.locator("li").first()).toContainText("移动MOBROOM1");
+
+    // ☑ 进入多选(空选=请选择,操作条禁用)→ 选中 → 删除
+    await page.getByTitle("多选").click();
+    await expect(page.getByRole("heading", { name: "请选择" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "删除" })).toBeDisabled();
+    await page.getByRole("button", { name: /移动MOBROOM3/ }).click();
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("button", { name: "删除" }).click();
+    await expect(page.getByText("移动MOBROOM3")).toHaveCount(0, { timeout: 10_000 });
+  });
+
+  test("真机长按(松手后无 click)不吞掉下一次点击", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    await seedThreeDocs(page, acc.token);
+    await expect(page.getByText("移动MOBROOM1")).toBeVisible({ timeout: 10_000 });
+
+    // Android 真机长按:pointerdown → 按住 → pointerup,系统不派发 click(鼠标仿真会派发)
+    const card1 = page.getByRole("button", { name: /移动MOBROOM1/ });
+    await card1.dispatchEvent("pointerdown", { clientX: 40, clientY: 10, pointerType: "touch" });
+    await page.waitForTimeout(650);
+    await card1.dispatchEvent("pointerup", { pointerType: "touch" });
+    await expect(page.getByRole("heading", { name: "已选中 1 项" })).toBeVisible();
+
+    // 下一次正常点卡片必须生效(v4.1 真机实测:曾被残留的长按标记吞掉)
+    await page.getByRole("button", { name: /移动MOBROOM2/ }).click();
+    await expect(page.getByRole("heading", { name: "已选中 2 项" })).toBeVisible();
   });
 
   test("扫码弹层:无摄像头时切粘贴表单,打开不破版", async ({ page }) => {
@@ -183,98 +223,92 @@ test.describe("首页(移动单列)", () => {
       });
     });
     await page.goto("/");
-    // 移动端扫码按钮仅剩 📷 图标(文案 sm 起显示),按 title 定位
-    await page.getByTitle("扫房间二维码直接加入").click();
+    await page.getByRole("button", { name: "扫码加入" }).click();
     await expect(page.getByText("或粘贴二维码内容 / 链接")).toBeVisible();
     await expectNoBreakout(page);
     await expectButtonsInView(page);
   });
+
+  test("?join=CODE 落地:弹出加入面板并预填文档码", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    const code = await createDoc(acc.token, "移动加入");
+    await page.goto(`/?join=${code}`);
+    await expect(page.locator("#roomCode")).toHaveValue(code);
+    await page.getByRole("button", { name: "加入文档" }).last().click();
+    await expect(page.locator("[data-doc-title]")).toHaveValue("移动加入", { timeout: 10_000 });
+  });
 });
 
-test.describe("编辑器(移动)", () => {
-  test("整页零横溢(曾溢出 51px);工具栏双行换行无内滚;退出文档可达(人数菜单)", async ({ page }) => {
+test.describe("文档页(移动原生化,v4.1)", () => {
+  async function openNewDoc(page: Page) {
     await loginTestAccount(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "创建新文档" }).click();
-    // 创建 → 首页右栏面板;进「完整编辑器」页面继续(工具栏/底部面板/二维码弹层属完整页)
-    await page.getByRole("button", { name: "完整编辑器" }).click();
-    await expect(page).toHaveURL(/\/editor\?code=[A-Z0-9]{8}/);
+    await page.getByRole("button", { name: "新建文档" }).click();
     await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 20_000 });
+  }
 
-    await expectNoBreakout(page); // 核心回归:曾整页可左右晃
+  test("阅读态 ↔ 编辑态:顶栏切换、悬浮工具栏、零横溢、触达达标", async ({ page }) => {
+    await openNewDoc(page);
+    await expectNoBreakout(page);
+    await expectButtonsInView(page);
+    await expectTapSize(page, ["返回", "分享", "更多"]);
+    await expect(page.getByRole("button", { name: "待办清单" })).toBeHidden();
+
+    await page.locator("[contenteditable]").click();
+    await page.keyboard.type("移动正文");
+    await expect(page.getByRole("button", { name: "完成" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "待办清单" })).toBeVisible();
+    await expectTapSize(page, ["撤销", "重做", "完成", "待办清单", "文本格式"]);
+    await expectNoBreakout(page);
     await expectButtonsInView(page);
 
-    // MDX 工具栏存在且双行换行 —— 自身无横向滚动(flex-wrap,而非撑破页面)
-    const toolbar = page.locator(".mdxeditor-toolbar").first();
-    await expect(toolbar).toBeVisible();
-    expect(
-      await toolbar.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
-    ).toBe(true);
+    // 文本格式面板:正文 → 标题
+    await page.getByRole("button", { name: "文本格式" }).click();
+    await page.getByRole("button", { name: "标题", exact: true }).click();
+    await expect(page.locator("[contenteditable] h1")).toHaveText("移动正文");
+    await page.getByRole("button", { name: "撤销" }).click();
+    await expect(page.locator("[contenteditable] h1")).toHaveCount(0);
 
-    // 工具栏图标按钮触达:第三方原生 28px,移动端应抬到 ≥38px(真机 audit 发现)
-    const tapSides = await page
-      .locator(".mdxeditor-toolbar button")
-      .evaluateAll((els) =>
-        els.map((e) => {
-          const r = e.getBoundingClientRect();
-          return Math.min(r.width, r.height);
-        })
-      );
-    const visible = tapSides.filter((s) => s > 0);
-    expect(visible.length).toBeGreaterThan(0);
-    expect(Math.min(...visible), "工具栏按钮触达过小").toBeGreaterThanOrEqual(38);
-
-    // 交互级回归:「退出文档」收敛进人数菜单后仍必须真实可达;人数按钮自身触达 ≥38
-    const countBtn = page.getByTitle(/在线用户/);
-    const cb = await countBtn.boundingBox();
-    expect(Math.min(cb!.width, cb!.height), "人数按钮触达过小").toBeGreaterThanOrEqual(38);
-    await countBtn.click();
-    await page.getByRole("menuitem", { name: "退出文档" }).click();
-    await expect(page).toHaveURL("/");
+    await page.getByRole("button", { name: "完成" }).click();
+    await expect(page.getByRole("button", { name: "分享" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "待办清单" })).toBeHidden();
   });
 
-  test("在线用户底部面板:人数菜单打开 → 列表可见 → ESC/关闭按钮", async ({ page }) => {
-    await loginTestAccount(page);
-    await page.goto("/");
-    await page.getByRole("button", { name: "创建新文档" }).click();
-    // 创建 → 首页右栏面板;进「完整编辑器」页面继续(工具栏/底部面板/二维码弹层属完整页)
-    await page.getByRole("button", { name: "完整编辑器" }).click();
-    await expect(page).toHaveURL(/\/editor\?code=[A-Z0-9]{8}/);
-    await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 20_000 });
+  test("标题就地改名 → 返回列表可见新名", async ({ page }) => {
+    await openNewDoc(page);
+    await page.locator("[data-doc-title]").fill("移动改名");
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "返回" }).click();
+    await expect(page.getByRole("button", { name: /移动改名/ })).toBeVisible({ timeout: 10_000 });
+  });
 
-    // 移动端常驻侧栏应隐藏,改由顶栏人数菜单进入底部面板
-    const usersText = page.getByText(/在线用户 \(1\)/);
-    await expect(usersText).toBeHidden();
-
-    const sheet = page.locator(".fixed.inset-0");
-    await page.getByTitle(/在线用户/).click();
+  test("在线用户面板:更多菜单打开 → 列表可见 → ESC 关闭", async ({ page }) => {
+    await openNewDoc(page);
+    const sheet = page.getByTestId("users-sheet");
+    // 列表页留在下层但 inert + aria-hidden:按角色定位只命中文档页的「更多」
+    await page.getByRole("button", { name: "更多" }).click();
     await page.getByRole("menuitem", { name: /在线用户 \(1\)/ }).click();
     await expect(sheet.getByText(/在线用户 \(1\)/)).toBeVisible();
     await expectNoBreakout(page);
-
     await page.keyboard.press("Escape");
     await expect(sheet).toHaveCount(0);
-
-    // 重开 → 显式关闭按钮
-    await page.getByTitle(/在线用户/).click();
-    await page.getByRole("menuitem", { name: /在线用户 \(1\)/ }).click();
-    await expect(sheet.getByText(/在线用户 \(1\)/)).toBeVisible();
-    await sheet.getByTitle("关闭").click();
-    await expect(sheet).toHaveCount(0);
   });
 
-  test("二维码弹层在移动端不破版", async ({ page }) => {
-    await loginTestAccount(page);
-    await page.goto("/");
-    await page.getByRole("button", { name: "创建新文档" }).click();
-    // 创建 → 首页右栏面板;进「完整编辑器」页面继续(工具栏/底部面板/二维码弹层属完整页)
-    await page.getByRole("button", { name: "完整编辑器" }).click();
-    await expect(page).toHaveURL(/\/editor\?code=[A-Z0-9]{8}/);
-    await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 20_000 });
-    await page.getByTitle(/在线用户/).click();
-    await page.getByRole("menuitem", { name: "发送邀请" }).click();
+  test("分享二维码弹层在移动端不破版", async ({ page }) => {
+    await openNewDoc(page);
+    await page.getByRole("button", { name: "分享" }).click();
     await expect(page.getByRole("heading", { name: "扫码进文档" })).toBeVisible();
     await expectNoBreakout(page);
+  });
+
+  test("/editor 在移动端转到首页文档页(扫码落地路径)", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    const code = await createDoc(acc.token, "移动直达");
+    await page.goto(`/editor?code=${code}`);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator("[data-doc-title]")).toHaveValue("移动直达", { timeout: 10_000 });
+    await page.getByRole("button", { name: "返回" }).click();
+    await expect(page.getByRole("heading", { name: "文档", exact: true })).toBeVisible();
   });
 });
 

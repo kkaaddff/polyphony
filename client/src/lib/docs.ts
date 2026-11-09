@@ -61,6 +61,8 @@ export type TrashEntry = {
   trashReason: TrashReason | null;
   trashedAt: number;
   purgeAt: number;
+  /** 正文开头(未命名时代替标题显示) */
+  preview?: string;
 };
 
 export async function fetchTrash(): Promise<TrashEntry[]> {

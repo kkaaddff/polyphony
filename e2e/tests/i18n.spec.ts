@@ -21,14 +21,17 @@ test.describe("i18n 语言", () => {
     await page.goto("/settings");
     // 默认 zh-CN（config 固定），标题为中文
     await expect(page.getByRole("heading", { name: "设置" })).toBeVisible();
-    await page.getByRole("radio", { name: "English" }).click();
+    // 界面语言是下拉框(不是一排按钮)
+    const select = page.getByLabel("界面语言");
+    await expect(select).toHaveJSProperty("tagName", "SELECT");
+    await select.selectOption("en");
     // 同页即时切换（无需重载）
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
     expect(await page.evaluate((k) => localStorage.getItem(k), LOCALE_KEY)).toBe(
       JSON.stringify("en")
     );
     // 切回中文
-    await page.getByRole("radio", { name: "中文", exact: true }).click();
+    await page.getByLabel("Language").selectOption("zh");
     await expect(page.getByRole("heading", { name: "设置" })).toBeVisible();
   });
 

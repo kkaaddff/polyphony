@@ -37,3 +37,24 @@ export function platformInfo(): PlatformInfo {
             : "other";
   return { client: isTauri() ? "app" : "web", os };
 }
+
+/**
+ * 在线用户面板里展示的客户端标签(与服务端 devices.label 同一拼法):
+ * App 壳 → "App · Android";浏览器 → "Chrome · macOS"。同一账号多端在线时靠它区分。
+ */
+export function clientLabel(): string {
+  const { client, os } = platformInfo();
+  const osLabel = { android: "Android", ios: "iOS", macos: "macOS", windows: "Windows", linux: "Linux", other: "Other" }[os];
+  if (client === "app") return `App · ${osLabel}`;
+  const ua = navigator.userAgent;
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /Chrome\//.test(ua)
+      ? "Chrome"
+      : /Firefox\//.test(ua)
+        ? "Firefox"
+        : /Safari\//.test(ua)
+          ? "Safari"
+          : "Browser";
+  return `${browser} · ${osLabel}`;
+}

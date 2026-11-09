@@ -54,6 +54,7 @@ export function Menu({
       <button
         type="button"
         title={buttonTitle}
+        aria-label={buttonTitle}
         aria-haspopup="menu"
         aria-expanded={open}
         className={buttonClassName}

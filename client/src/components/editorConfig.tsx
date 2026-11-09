@@ -25,8 +25,9 @@ import {
   ListsToggle,
   BlockTypeSelect,
 } from "@mdxeditor/editor";
+import { MobileToolbarPortal } from "@/components/mobile/MobileEditorToolbar";
 
-export function createEditorPlugins(
+function contentPlugins(
   imageUploadHandler: (image: File) => Promise<string>,
   imagePreviewHandler?: (src: string) => Promise<string>
 ) {
@@ -42,6 +43,15 @@ export function createEditorPlugins(
     frontmatterPlugin(),
     imagePlugin({ imageUploadHandler, imagePreviewHandler: imagePreviewHandler ?? null }),
     markdownShortcutPlugin(),
+  ];
+}
+
+export function createEditorPlugins(
+  imageUploadHandler: (image: File) => Promise<string>,
+  imagePreviewHandler?: (src: string) => Promise<string>
+) {
+  return [
+    ...contentPlugins(imageUploadHandler, imagePreviewHandler),
     toolbarPlugin({
       toolbarContents: () => (
         <>
@@ -58,6 +68,23 @@ export function createEditorPlugins(
           <ListsToggle />
         </>
       ),
+    }),
+  ];
+}
+
+/**
+ * 移动端:内容能力与桌面一致,工具栏换成 MobileToolbarPortal(portal 到页面底部槽位,
+ * 须在 MobileEditorBridge 内使用)。编辑器自带的顶部工具栏容器留空并隐藏。
+ */
+export function createMobileEditorPlugins(
+  imageUploadHandler: (image: File) => Promise<string>,
+  imagePreviewHandler?: (src: string) => Promise<string>
+) {
+  return [
+    ...contentPlugins(imageUploadHandler, imagePreviewHandler),
+    toolbarPlugin({
+      toolbarClassName: "!hidden",
+      toolbarContents: () => <MobileToolbarPortal />,
     }),
   ];
 }

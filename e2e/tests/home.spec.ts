@@ -1,6 +1,6 @@
 // 首页:登录守卫、双栏一屏布局、顶栏身份、创建/加入、我的文档(逐行退出)、回收站入口。
 import { expect, test } from "@playwright/test";
-import { captureDialogs, createAccount, createDoc, loginTestAccount, openShareSite } from "./helpers";
+import { captureDialogs, createAccount, createDoc, loginTestAccount, openShareSite, seedStorage } from "./helpers";
 
 const API = "http://localhost:3001";
 
@@ -192,5 +192,85 @@ test.describe("我的文档(成员登记)", () => {
     await expect(
       page.getByRole("heading", { name: "扫码访问本站" })
     ).toBeHidden();
+  });
+});
+
+test.describe("首页文档面板内容同步(回归)", () => {
+  // MDXEditor 的 markdown 属性只在挂载时读一次;面板曾只靠它显示内容 → 打开已有内容的文档是空白、
+  // 他人输入不出现,而在空白编辑器里敲字会按 diff 把全文删掉。两个独立 context 模拟两个用户。
+  test("打开即见服务端正文;他人输入实时出现;本端输入不吞掉他人内容;切换文档无残影", async ({ browser }) => {
+    const accA = await createAccount();
+    const accB = await createAccount();
+    const code = await createDoc(accA.token);
+    await createDoc(accA.token, "另一篇");
+
+    const ctxB = await browser.newContext();
+    const b = await ctxB.newPage();
+    await seedStorage(b, { token: accB.token });
+    const ctxA = await browser.newContext();
+    const a = await ctxA.newPage();
+    await seedStorage(a, { token: accA.token });
+    try {
+      await b.goto(`/editor?code=${code}`);
+      const eb = b.locator('[contenteditable="true"]').first();
+      await eb.click();
+      await b.keyboard.type("乙写的第一句");
+      await expect(eb).toContainText("乙写的第一句");
+
+      await a.goto("/");
+      await a.getByRole("button", { name: /乙写的第一句|未命名文档/ }).first().click();
+      const ea = a.locator('[contenteditable="true"]').first();
+      await expect(ea).toContainText("乙写的第一句", { timeout: 10_000 });
+
+      await eb.click();
+      await b.keyboard.press("End");
+      await b.keyboard.type("+乙续写");
+      await expect(ea).toContainText("乙写的第一句+乙续写", { timeout: 10_000 });
+
+      await ea.click();
+      await a.keyboard.press("End");
+      await a.keyboard.type("甲");
+      await expect(eb).toContainText("乙写的第一句+乙续写甲", { timeout: 10_000 });
+
+      // 切到另一篇:编辑器不残留上一篇正文
+      await a.getByRole("button", { name: "另一篇" }).click();
+      await expect(a.getByText("文档:")).toBeVisible();
+      await expect(a.locator('[contenteditable="true"]').first()).not.toContainText("乙写的第一句", { timeout: 5_000 });
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
+});
+
+test.describe("离线身份(回归)", () => {
+  // 曾经:/auth/me 失败时账号为 null → 顶栏「匿名用户」、列表空、文档打不开。
+  // 现在:上次在线校验的账号与房间簿按设备凭据缓存,离线冷启动照常展示。
+  test("登录过一次后服务器不可达:仍是上次登录的用户,列表在,文档能打开", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    await createDoc(acc.token, "离线可见");
+    await page.goto("/");
+    await expect(page.getByText(acc.name).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "离线可见" })).toBeVisible();
+
+    // 服务器不可达(页面本身由 Vite 提供,只断 API/WS)
+    await page.route("http://localhost:3001/**", (route) => route.abort("connectionrefused"));
+    await page.reload();
+    await expect(page.getByText(acc.name).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("匿名用户")).toHaveCount(0);
+    await page.getByRole("button", { name: "离线可见" }).click();
+    await expect(page.locator('[contenteditable="true"]').first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("快照绑定设备凭据:换一个账号登录不会显示上一个账号", async ({ page }) => {
+    const first = await loginTestAccount(page);
+    await page.goto("/");
+    await expect(page.getByText(first.name).first()).toBeVisible({ timeout: 10_000 });
+    const second = await createAccount();
+    // loginTestAccount 的 init script 每次加载都会写回第一个账号的凭据:再挂一个(按顺序后执行)覆盖它
+    await page.addInitScript((t) => localStorage.setItem("polyphony.token", t), second.token);
+    await page.route("http://localhost:3001/**", (route) => route.abort("connectionrefused"));
+    await page.reload();
+    await expect(page.getByText(first.name)).toHaveCount(0);
   });
 });

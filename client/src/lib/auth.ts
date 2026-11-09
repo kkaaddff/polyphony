@@ -6,6 +6,10 @@ import { getServerBase, saveServer } from "@/lib/serverConfig";
 import { platformInfo } from "@/platform";
 
 const TOKEN_KEY = "polyphony.token";
+// 离线快照:上次在线校验通过的账号 / 房间簿,绑定到当时的设备凭据(换号、重新配对不串号)。
+// 离线冷启动时用它们展示身份与文档列表——否则顶栏是「匿名用户」、列表为空、文档也打不开。
+const ACCOUNT_CACHE_KEY = "polyphony.account";
+const ROOMS_CACHE_KEY = "polyphony.roomsCache";
 const UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 export type Account = { id: string; name: string };
@@ -56,11 +60,51 @@ export function clearToken(): void {
   }
 }
 
-/** 清全部本地数据:凭据 + 文档缓存(IndexedDB)+ 最近房间。退出登录/注销/清理 v3 残留共用。 */
+// ---------- 离线快照(绑定设备凭据) ----------
+
+function currentDeviceId(): string {
+  return parseCredential(getToken())?.deviceId ?? "";
+}
+
+function readSnapshot<T>(key: string): T | null {
+  const deviceId = currentDeviceId();
+  if (!deviceId) return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    const snap = raw ? (JSON.parse(raw) as { deviceId?: string; value?: T }) : null;
+    return snap?.deviceId === deviceId && snap.value !== undefined ? snap.value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSnapshot<T>(key: string, value: T): void {
+  const deviceId = currentDeviceId();
+  if (!deviceId) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify({ deviceId, value }));
+  } catch {
+    /* 存储满/隐私模式:只是少了离线快照 */
+  }
+}
+
+/** 上次在线拉到的房间簿(离线冷启动展示用;调用方自行把在线人数归零)。 */
+export function readCachedRooms<T>(): T[] | null {
+  return readSnapshot<T[]>(ROOMS_CACHE_KEY);
+}
+
+export function cacheRooms<T>(rooms: T[]): void {
+  writeSnapshot(ROOMS_CACHE_KEY, rooms);
+}
+
+/** 清全部本地数据:凭据 + 文档缓存(IndexedDB)+ 最近房间 + 离线快照。退出登录/注销/清理 v3 残留共用。 */
 export function clearAllLocalData(): void {
   clearToken();
   try {
     window.localStorage.removeItem("polyphony.recentRooms");
+    window.localStorage.removeItem("polyphony.pinned");
+    window.localStorage.removeItem(ACCOUNT_CACHE_KEY);
+    window.localStorage.removeItem(ROOMS_CACHE_KEY);
   } catch {
     /* 忽略 */
   }
@@ -240,9 +284,13 @@ export function cleanupV3Local(): boolean {
   return true;
 }
 
-/** 当前登录账号(供顶栏身份展示与默认用户名)。 */
+/**
+ * 当前登录账号(供顶栏身份展示与默认用户名)。
+ * 先用上次在线校验的快照(离线也是上次登录的用户,不是「匿名用户」),再联网校验刷新;
+ * 服务端明确拒绝(凭据失效)才清空,网络失败保留快照。
+ */
 export function useAccount(): { account: Account | null; reload: () => void } {
-  const [account, setAccount] = useState<Account | null>(null);
+  const [account, setAccount] = useState<Account | null>(() => readSnapshot<Account>(ACCOUNT_CACHE_KEY));
 
   const reload = useCallback(() => {
     const token = getToken();
@@ -250,16 +298,25 @@ export function useAccount(): { account: Account | null; reload: () => void } {
       setAccount(null);
       return;
     }
+    setAccount((prev) => prev ?? readSnapshot<Account>(ACCOUNT_CACHE_KEY));
     let cancelled = false;
     fetch(`${getServerBase()}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled) setAccount(d);
+      .then(async (r) => {
+        if (cancelled) return;
+        if (r.ok) {
+          const d = (await r.json()) as Account;
+          writeSnapshot<Account>(ACCOUNT_CACHE_KEY, { id: d.id, name: d.name });
+          setAccount(d);
+        } else if (r.status === 401 || r.status === 403) {
+          window.localStorage.removeItem(ACCOUNT_CACHE_KEY);
+          setAccount(null);
+        }
+        // 其余状态(5xx/反代错误)视同暂时不可达:保留快照
       })
       .catch(() => {
-        /* 网络失败保持 null,顶栏回落显示地址 */
+        /* 网络失败(离线):保留快照里的上次登录用户 */
       });
     return () => {
       cancelled = true;

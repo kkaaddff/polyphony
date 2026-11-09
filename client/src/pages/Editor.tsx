@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useSearchParams } from "react-router";
 import type { MDXEditorMethods } from "@mdxeditor/editor";
 import { MDXEditor } from "@mdxeditor/editor";
 import "@mdxeditor/editor/style.css";
@@ -16,6 +16,7 @@ import { RoomHeader } from "@/components/RoomHeader";
 import { UsersPanel } from "@/components/UsersPanel";
 import { CloseIcon } from "@/components/icons";
 import { User } from "@/types";
+import { useIsMobile } from "@/lib/useIsMobile";
 
 /** useCollaboration 置出的稳定错误码 → 文案键（渲染层翻译）。 */
 const COLLAB_ERROR_KEYS: Record<string, "editor.collabError" | "editor.connectionClosed"> = {
@@ -31,7 +32,19 @@ const UPLOAD_ERROR_KEYS: Record<string, "errors.E_NO_FILE" | "errors.E_FILE_TYPE
   E_UPLOAD: "errors.E_UPLOAD",
 };
 
+/**
+ * 移动端没有独立的完整编辑器页:扫码落地(/join → /editor)等入口统一转到首页
+ * `?open=CODE`,由首页打开移动文档页(返回键回到列表而不是退出)。
+ */
 export default function Editor() {
+  const isMobile = useIsMobile();
+  const [searchParams] = useSearchParams();
+  const code = searchParams.get("code")?.toUpperCase() ?? "";
+  if (isMobile && code) return <Navigate to={`/?open=${encodeURIComponent(code)}`} replace />;
+  return <EditorPage />;
+}
+
+function EditorPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { t } = useT();
@@ -58,6 +71,7 @@ export default function Editor() {
   const [roomName, setRoomName] = useState("");
   const editorRef = useRef<MDXEditorMethods | null>(null);
   const isUpdatingFromRemote = useRef(false);
+  const remoteTimer = useRef<number | undefined>(undefined);
   const contentRef = useRef<string>("");
 
   const { isConnected, error, applyLocalChange, renameRoom } = useCollaboration({
@@ -65,23 +79,18 @@ export default function Editor() {
     userName,
     userId,
     onContentChange: (newContent) => {
-      // 避免循环更新
-      if (isUpdatingFromRemote.current) {
-        return;
-      }
-      if (newContent !== contentRef.current) {
-        isUpdatingFromRemote.current = true;
-        contentRef.current = newContent as string;
-        setContent(newContent);
-        // 同步到 MDXEditor
-        if (editorRef.current) {
-          editorRef.current.setMarkdown(newContent as string);
-        }
-        // 使用 setTimeout 确保状态更新完成
-        setTimeout(() => {
-          isUpdatingFromRemote.current = false;
-        }, 0);
-      }
+      // 远端更新一律写入(不在回声窗口内丢弃——慢设备上会丢掉对方连续输入的后半截,
+      // v4.1 真机联调实测);isUpdatingFromRemote 只用来忽略 setMarkdown 自身的 onChange 回声
+      const text = newContent as string;
+      if (text === contentRef.current) return;
+      contentRef.current = text;
+      setContent(text);
+      isUpdatingFromRemote.current = true;
+      editorRef.current?.setMarkdown(text);
+      window.clearTimeout(remoteTimer.current);
+      remoteTimer.current = window.setTimeout(() => {
+        isUpdatingFromRemote.current = false;
+      }, 0);
     },
     onUsersChange: setUsers,
     onRoomNameChange: setRoomName,
@@ -280,7 +289,7 @@ export default function Editor() {
 
         {/* 桌面常驻侧栏;移动端隐藏(改抽屉) */}
         <div className="hidden md:block shrink-0">
-          <UsersPanel users={users} />
+          <UsersPanel users={users} sidebar />
         </div>
       </div>
 

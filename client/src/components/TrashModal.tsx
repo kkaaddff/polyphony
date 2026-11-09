@@ -4,6 +4,7 @@ import { fetchTrash, restoreDoc, purgeDoc, exportDoc, type TrashEntry } from "@/
 import { getServerBase } from "@/lib/serverConfig";
 import { useT } from "@/i18n";
 import { useBackHandler } from "@/platform/backButton";
+import { docTitle } from "@/lib/docTitle";
 
 interface TrashModalProps {
   onClose: () => void;
@@ -92,7 +93,7 @@ export function TrashModal({ onClose, onChanged }: TrashModalProps) {
               <li key={d.code} className="rounded-lg border border-gray-200 px-3 py-2 space-y-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-gray-900 font-medium truncate">
-                    {d.name || t("common.unnamedDoc")}
+                    {docTitle(d, t("common.unnamedDoc"))}
                   </span>
                 </div>
                 <p className="text-xs text-gray-500">
