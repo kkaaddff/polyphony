@@ -12,6 +12,7 @@ import { exportDoc, deleteDoc, getDocStatus } from "@/lib/docs";
 import { getServerBase } from "@/lib/serverConfig";
 import { prepImageForUpload } from "@/lib/imagePrep";
 import { useT } from "@/i18n";
+import { useServerReachable } from "@/lib/connectivity";
 import type { User } from "@/types";
 
 const UPLOAD_ERROR_KEYS: Record<string, "errors.E_NO_FILE" | "errors.E_FILE_TYPE" | "errors.E_FILE_SIZE" | "errors.E_UPLOAD"> = {
@@ -19,11 +20,6 @@ const UPLOAD_ERROR_KEYS: Record<string, "errors.E_NO_FILE" | "errors.E_FILE_TYPE
   E_FILE_TYPE: "errors.E_FILE_TYPE",
   E_FILE_SIZE: "errors.E_FILE_SIZE",
   E_UPLOAD: "errors.E_UPLOAD",
-};
-
-const COLLAB_ERROR_KEYS: Record<string, "editor.collabError" | "editor.connectionClosed"> = {
-  ERR_COLLAB_CONNECT: "editor.collabError",
-  ERR_CONNECTION_CLOSED: "editor.connectionClosed",
 };
 
 interface DocPaneProps {
@@ -85,12 +81,16 @@ export function DocPane({ code, userName, userId, onClose, onUnavailable }: DocP
     return () => window.removeEventListener("polyphony:open-users", open);
   }, []);
 
-  // 所有权进入时查一次
-  useMemo(() => {
+  // 所有权:进入时查一次;离线查不到就等恢复连接再查(否则离线打开的文档一直缺「删除」入口)
+  const reachable = useServerReachable();
+  useEffect(() => {
+    if (reachable === false) return;
     getDocStatus(code)
-      .then((s) => setIsOwner(s.isOwner))
-      .catch(() => setIsOwner(false));
-  }, [code]);
+      .then((s) => setIsOwner(s.status === "active" && s.isOwner))
+      .catch(() => {
+        /* 离线/超时:保持现值,恢复连接后重查 */
+      });
+  }, [code, reachable]);
 
   const onDocUnavailable = useCallback(
     (kind: "missing" | "trashed") => {
@@ -206,14 +206,6 @@ export function DocPane({ code, userName, userId, onClose, onUnavailable }: DocP
           </div>
         }
       />
-
-      {collab.error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 px-4 py-2">
-          <p className="text-sm text-red-700 dark:text-red-400">
-            {COLLAB_ERROR_KEYS[collab.error] ? t(COLLAB_ERROR_KEYS[collab.error]) : collab.error}
-          </p>
-        </div>
-      )}
 
       {/* 编辑区(相对定位承载悬浮用户列表) */}
       <div className="relative flex-1 min-h-0 flex flex-col p-3 md:p-4">

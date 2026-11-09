@@ -1,5 +1,6 @@
 // 文档生命周期客户端(docs/document-lifecycle.md §4.3/§4.8)。
 import { authFetch } from "@/lib/auth";
+import { timeoutSignal } from "@/lib/connectivity";
 import { getServerBase } from "@/lib/serverConfig";
 
 export type DocStatus = "active" | "trashed" | "missing";
@@ -80,9 +81,10 @@ export async function uploadAttachment(
 ): Promise<string> {
   const form = new FormData();
   form.append("image", file, filename);
+  // 大图走慢网可能超过默认请求超时,单独放宽
   const res = await authFetch(
     `${getServerBase()}/docs/${encodeURIComponent(code)}/attachments`,
-    { method: "POST", body: form }
+    { method: "POST", body: form, signal: timeoutSignal(60000) }
   );
   if (!res.ok) await throwCoded(res);
   const data = (await res.json()) as { url: string };

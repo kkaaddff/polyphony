@@ -11,6 +11,7 @@ import { authFetch, clearRoomCache, useAccount } from "@/lib/auth";
 import { uploadAttachment, exportDoc, deleteDoc, getDocStatus } from "@/lib/docs";
 import { prepImageForUpload } from "@/lib/imagePrep";
 import { useT } from "@/i18n";
+import { useServerReachable } from "@/lib/connectivity";
 import { createEditorPlugins } from "@/components/editorConfig";
 import { RoomHeader } from "@/components/RoomHeader";
 import { UsersPanel } from "@/components/UsersPanel";
@@ -19,11 +20,6 @@ import { User } from "@/types";
 import { useIsMobile } from "@/lib/useIsMobile";
 
 /** useCollaboration 置出的稳定错误码 → 文案键（渲染层翻译）。 */
-const COLLAB_ERROR_KEYS: Record<string, "editor.collabError" | "editor.connectionClosed"> = {
-  ERR_COLLAB_CONNECT: "editor.collabError",
-  ERR_CONNECTION_CLOSED: "editor.connectionClosed",
-};
-
 /** 服务端上传错误码（server/index.js）→ 文案键；旧服务端无 code 时回落 error 文本。 */
 const UPLOAD_ERROR_KEYS: Record<string, "errors.E_NO_FILE" | "errors.E_FILE_TYPE" | "errors.E_FILE_SIZE" | "errors.E_UPLOAD"> = {
   E_NO_FILE: "errors.E_NO_FILE",
@@ -74,7 +70,7 @@ function EditorPage() {
   const remoteTimer = useRef<number | undefined>(undefined);
   const contentRef = useRef<string>("");
 
-  const { isConnected, error, applyLocalChange, renameRoom } = useCollaboration({
+  const { isConnected, applyLocalChange, renameRoom } = useCollaboration({
     roomCode,
     userName,
     userId,
@@ -173,12 +169,16 @@ function EditorPage() {
 
   // 文档操作:导出(任何成员)/删除(仅所有者);所有权进入时查一次
   const [isOwner, setIsOwner] = useState(false);
+  // 所有权:进入时查一次;离线查不到就等恢复连接再查(否则离线打开的文档一直缺「删除」入口)
+  const reachable = useServerReachable();
   useEffect(() => {
-    if (!roomCode) return;
+    if (!roomCode || reachable === false) return;
     getDocStatus(roomCode)
       .then((st) => setIsOwner(st.status === "active" && st.isOwner))
-      .catch(() => setIsOwner(false));
-  }, [roomCode]);
+      .catch(() => {
+        /* 离线/超时:保持现值,恢复连接后重查 */
+      });
+  }, [roomCode, reachable]);
   const [docBusy, setDocBusy] = useState(false);
   const doExport = async () => {
     setDocBusy(true);
@@ -254,16 +254,6 @@ function EditorPage() {
           </div>
         }
       />
-
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 px-4 md:px-6 py-3 md:py-4">
-          <p className="text-sm md:text-base text-red-700 dark:text-red-400">
-            {COLLAB_ERROR_KEYS[error]
-              ? t(COLLAB_ERROR_KEYS[error])
-              : error}
-          </p>
-        </div>
-      )}
 
       {/* 主体:桌面=编辑区+常驻侧栏;移动=纯编辑区(侧栏进抽屉)。
           min-w-0 是关键:flex 子项默认不收缩,固定宽侧栏会把编辑区撑出视口 */}

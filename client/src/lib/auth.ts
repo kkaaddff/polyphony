@@ -4,6 +4,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { getServerBase, saveServer } from "@/lib/serverConfig";
 import { platformInfo } from "@/platform";
+import {
+  markServerReachable,
+  markServerUnreachable,
+  REQUEST_TIMEOUT_MS,
+  timeoutSignal,
+} from "@/lib/connectivity";
 
 const TOKEN_KEY = "polyphony.token";
 // 离线快照:上次在线校验通过的账号 / 房间簿,绑定到当时的设备凭据(换号、重新配对不串号)。
@@ -177,15 +183,28 @@ async function throwCoded(res: Response, fallback: string): Promise<never> {
   throw err;
 }
 
-/** 带 Bearer 的 fetch;401 统一清 token 并回引导页(登录态失效只有这一种来源)。 */
+/**
+ * 带 Bearer 的 fetch;401 统一清 token 并回引导页(登录态失效只有这一种来源)。
+ * 默认 REQUEST_TIMEOUT_MS 超时(调用方传 signal 则用调用方的),成败顺带上报连通性:
+ * 网络错误/超时/反代 502-504 → 离线,其余任何响应 → 在线。
+ */
 export async function authFetch(input: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(input, {
-    ...init,
-    headers: {
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${getToken()}`,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(input, {
+      ...init,
+      signal: init?.signal ?? timeoutSignal(REQUEST_TIMEOUT_MS),
+      headers: {
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${getToken()}`,
+      },
+    });
+  } catch (e) {
+    markServerUnreachable();
+    throw e;
+  }
+  if (res.status >= 502 && res.status <= 504) markServerUnreachable();
+  else markServerReachable();
   if (res.status === 401) {
     clearToken();
     window.location.assign("/welcome");
@@ -302,6 +321,7 @@ export function useAccount(): { account: Account | null; reload: () => void } {
     let cancelled = false;
     fetch(`${getServerBase()}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: timeoutSignal(REQUEST_TIMEOUT_MS),
     })
       .then(async (r) => {
         if (cancelled) return;

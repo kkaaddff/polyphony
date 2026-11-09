@@ -2,7 +2,7 @@
 // 背景:真机审计发现房间行按钮裁出屏外、编辑器横溢 51px、退出按钮被遮挡
 // 点不动(交互损坏)——本套件用程序化布局断言守护(v3.4.0 重构的回归线)。
 import { expect, test, type Page } from "@playwright/test";
-import { createAccount, createDoc, loginTestAccount } from "./helpers";
+import { createAccount, createDoc, loginTestAccount, simulateOutage } from "./helpers";
 
 /** 页面横向溢出 ≤1px(整页可左右晃 = 布局破)。 */
 async function expectNoBreakout(page: Page) {
@@ -332,5 +332,34 @@ test.describe("设置(移动)", () => {
     await expect(page.getByText("恢复密钥", { exact: true })).toBeVisible();
     await expect(page.getByText("注销账号", { exact: true })).toBeVisible();
     await expectNoBreakout(page);
+  });
+});
+
+test.describe("离线(移动)", () => {
+  // 真机反馈:服务离线后没有明确状态,且文档打不开。现在:红色「离线」标签(列表大标题旁 / 文档顶栏常驻),
+  // 文档照常秒开可写,恢复连接后标签消失、修改自动同步。
+  test("不可达:列表与文档顶栏都有离线标签,文档秒开可写,恢复后消失", async ({ page }) => {
+    const acc = await loginTestAccount(page);
+    await createDoc(acc.token, "移动离线");
+    const net = await simulateOutage(page);
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: /移动离线/ })).toBeVisible({ timeout: 10_000 });
+
+    await net.down();
+    await page.reload();
+    const tag = page.getByTestId("offline-tag");
+    await expect(tag.first()).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByText("无法连接协同服务器")).toHaveCount(0); // 旧的长黄条已去掉
+
+    await page.getByRole("button", { name: /移动离线/ }).click();
+    await expect(page.locator("[data-doc-title]")).toBeVisible({ timeout: 3_000 });
+    await expect(tag.last()).toBeVisible({ timeout: 6_000 });
+    await expect(page.getByText("已存本机，联网后同步")).toBeVisible();
+    await expectNoBreakout(page);
+    await expectButtonsInView(page);
+
+    await net.up();
+    await expect(page.getByText("已连接", { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(tag).toHaveCount(0, { timeout: 15_000 });
   });
 });

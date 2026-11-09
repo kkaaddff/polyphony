@@ -1,6 +1,13 @@
 // 中文文案完本（类型的唯一来源；en.ts 必须 satisfies 同构，漏译编译期报错）。
 // 键名约定：<页面/组件>.<语义名>；插值用 {name} 占位。
 export const zh = {
+  offline: {
+    tag: "离线",
+    title: "暂时连不上服务器",
+    desc: "修改都保存在本机，恢复连接后自动同步。",
+    checkServer: "检查服务器地址",
+    createBlocked: "离线时无法新建文档，请联网后重试",
+  },
   common: {
     appName: "Polyphony",
     taglineShort: "多个声部，一份总谱。",
@@ -24,9 +31,6 @@ export const zh = {
     myRooms: "我的文档",
     nOnline: "{n} 人在线",
     showQrTitle: "显示二维码",
-    serverUnreachableBefore: "无法连接协同服务器。若服务部署在其他地址，请",
-    serverUnreachableLink: "前往设置",
-    serverUnreachableAfter: "配置直连地址（如 http://IP:端口）后使用。",
     featureSyncTitle: "实时同步",
     featureRichTitle: "富文本协同",
     lastUsed: "上次使用",
@@ -72,7 +76,7 @@ export const zh = {
     redo: "重做",
     done: "完成",
     nChars: "{n} 字",
-    offline: "离线编辑中",
+    offline: "已存本机，联网后同步",
     textFormat: "文本格式",
     heading1: "标题",
     heading2: "小标题",
@@ -133,11 +137,9 @@ export const zh = {
 
   editor: {
     docContent: "文档内容",
-    connectionClosed: "连接已关闭",
     charCount: "{n} 字符",
     uploadFail: "图片上传失败：{msg}",
     unknownError: "未知错误",
-    collabError: "无法连接实时协作服务",
     exportBtn: "导出",
     deleteBtn: "删除",
     imagePrepFail: "图片处理失败（格式不受支持或文件过大）",
@@ -208,6 +210,7 @@ export const zh = {
     invite: "发送邀请",
     connected: "已连接",
     disconnected: "未连接",
+    connecting: "连接中…",
     leave: "退出文档",
   },
 

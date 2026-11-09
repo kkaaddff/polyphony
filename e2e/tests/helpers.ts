@@ -2,7 +2,7 @@
 // v4:账号创建由本机生成 secret(服务端只存哈希、从不下发),
 // helper 用 Node crypto 复刻客户端拼装 poly_d_<deviceId>_<secret>。
 import { randomBytes } from "node:crypto";
-import type { Page } from "@playwright/test";
+import type { Page, Route, WebSocketRoute } from "@playwright/test";
 
 export const USERNAME_KEY = "polyphony.username";
 export const RECENT_ROOMS_KEY = "polyphony.recentRooms";
@@ -115,4 +115,38 @@ export async function openShareSite(page: Page) {
   const heading = page.getByRole("heading", { name: "扫码访问本站" });
   await heading.waitFor();
   return heading;
+}
+
+/**
+ * 模拟服务器宕机/IP 不可达:down() 后 HTTP 请求一律挂起不回(而非立即拒绝——真机换网后正是这样,
+ * 这才是「离线打不开文档」的根因),协同 WS 被断开且重连失败;up() 恢复转发。页面本身由 Vite 提供。
+ */
+export async function simulateOutage(page: Page) {
+  let blocked = false;
+  const hung = new Set<Route>();
+  const sockets = new Set<WebSocketRoute>();
+  await page.route(`${API}/**`, (route) => {
+    if (blocked) hung.add(route);
+    else void route.continue();
+  });
+  await page.routeWebSocket(/^ws:\/\/localhost:3001\//, (ws) => {
+    if (blocked) {
+      void ws.close();
+      return;
+    }
+    ws.connectToServer();
+    sockets.add(ws);
+  });
+  return {
+    down: async () => {
+      blocked = true;
+      for (const ws of sockets) await ws.close();
+      sockets.clear();
+    },
+    up: async () => {
+      blocked = false;
+      for (const r of hung) await r.abort("connectionrefused").catch(() => {});
+      hung.clear();
+    },
+  };
 }

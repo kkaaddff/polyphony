@@ -13,6 +13,8 @@ import { copyText } from "@/lib/clipboard";
 import { getServerBase } from "@/lib/serverConfig";
 import { buildJoinUrl } from "@/lib/qr";
 import { useT } from "@/i18n";
+import { useIsOffline } from "@/lib/connectivity";
+import { OfflineTag } from "@/components/OfflineTag";
 
 interface RoomHeaderProps {
   roomCode: string;
@@ -40,6 +42,7 @@ export function RoomHeader({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [showQr, setShowQr] = useState(false);
+  const offline = useIsOffline(isConnected);
 
   const startRename = () => {
     setDraft(roomName);
@@ -121,18 +124,17 @@ export function RoomHeader({
       {/* 右组:自定义操作(字数/导出/删除) + 连接状态 + 人数菜单(不收缩) */}
       <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
         {actions}
-        <div className="flex items-center gap-1.5 px-1">
-          <div
-            className={`w-2 h-2 rounded-full ${
-              isConnected ? "bg-green-500" : "bg-red-500"
-            }`}
-          />
-          <span className="text-xs md:text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
-            {isConnected
-              ? t("roomHeader.connected")
-              : t("roomHeader.disconnected")}
-          </span>
-        </div>
+        {/* 连接状态:已连接(绿点) / 握手中(灰点) / 离线(红色标签,修改存本机、联网后自动同步) */}
+        {offline ? (
+          <OfflineTag align="right" className="px-1" />
+        ) : (
+          <div className="flex items-center gap-1.5 px-1">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-gray-300"}`} />
+            <span className="text-xs md:text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              {isConnected ? t("roomHeader.connected") : t("roomHeader.connecting")}
+            </span>
+          </div>
+        )}
         <Menu
           buttonTitle={t("roomHeader.countBtnTitle")}
           buttonClassName="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-tap-40 flex items-center gap-1"

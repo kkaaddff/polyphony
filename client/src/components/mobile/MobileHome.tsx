@@ -20,7 +20,7 @@ import {
   SearchOutlined,
   ShareAltOutlined,
 } from "@ant-design/icons";
-import { Link } from "react-router";
+import { OfflineTag } from "@/components/OfflineTag";
 import { Avatar } from "@/components/Avatar";
 import { Menu, MenuItem } from "@/components/Menu";
 import { CategoryDrawer, JoinSheet, type DocFilter } from "@/components/mobile/MobileSheets";
@@ -240,6 +240,9 @@ export function MobileHome({
           }`}
         >
           {bigTitle}
+          {serverOk === false && (
+            <span className="ml-1.5 text-xs font-medium text-red-600">· {t("offline.tag")}</span>
+          )}
         </div>
         <div className="ml-auto flex items-center gap-1">
           {selecting ? (
@@ -297,7 +300,10 @@ export function MobileHome({
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
         onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 36)}
       >
-        <h1 className="px-5 pt-1 pb-3 text-[30px] leading-tight font-semibold text-gray-900">{bigTitle}</h1>
+        <div className="px-5 pt-1 pb-3 flex items-center gap-2.5">
+          <h1 className="text-[30px] leading-tight font-semibold text-gray-900">{bigTitle}</h1>
+          {serverOk === false && <OfflineTag />}
+        </div>
 
         <div className="px-3">
           <label className="flex items-center gap-2 h-10 rounded-full bg-black/[0.06] px-4 text-gray-500">
@@ -312,16 +318,6 @@ export function MobileHome({
             />
           </label>
         </div>
-
-        {serverOk === false && (
-          <div className="mx-3 mt-3 rounded-2xl bg-yellow-50 px-4 py-2.5 text-sm text-yellow-800">
-            {t("home.serverUnreachableBefore")}
-            <Link to="/settings" className="font-semibold underline underline-offset-2">
-              {t("home.serverUnreachableLink")}
-            </Link>
-            {t("home.serverUnreachableAfter")}
-          </div>
-        )}
 
         {/* 分类:吸顶 */}
         <div className="sticky top-0 z-10 bg-[#f5f5f7] px-3 py-3 flex items-center gap-2 overflow-x-auto">

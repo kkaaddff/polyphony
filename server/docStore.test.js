@@ -307,3 +307,16 @@ test('liveDocName:活文档即时返回内存名(不等防抖落库);卸载后 n
   d.destroy();
   assert.equal(store.liveDocName(code), null);
 });
+
+test('创建时带名、meta 从未设名:活文档名回落库名,落库也不被空串覆盖', () => {
+  const { account } = mkAccount();
+  const { code } = store.createDoc({ ownerId: account.id, name: '带名创建', now: T0 });
+  const persistence = store.makePersistence();
+  const d = new Y.Doc();
+  persistence.bindState(code, d);
+  assert.equal(store.liveDocName(code), null); // 调用方回落 docs.name
+  d.getText('document').insert(0, '正文');
+  persistence.writeState(code, d);
+  assert.equal(getDb().prepare('SELECT name FROM docs WHERE code = ?').get(code).name, '带名创建');
+  d.destroy();
+});

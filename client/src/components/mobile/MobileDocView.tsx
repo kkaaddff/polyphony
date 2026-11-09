@@ -19,6 +19,8 @@ import { Menu, MenuItem } from "@/components/Menu";
 import { QrModal } from "@/components/QrModal";
 import { UsersPanel } from "@/components/UsersPanel";
 import { useCollaboration } from "@/lib/useCollaboration";
+import { useIsOffline, useServerReachable } from "@/lib/connectivity";
+import { OfflineTag } from "@/components/OfflineTag";
 import { exportDoc, getDocStatus, uploadAttachment } from "@/lib/docs";
 import { prepImageForUpload } from "@/lib/imagePrep";
 import { getServerBase } from "@/lib/serverConfig";
@@ -26,11 +28,6 @@ import { buildJoinUrl } from "@/lib/qr";
 import { useT } from "@/i18n";
 import { useBackHandler } from "@/platform/backButton";
 import type { User } from "@/types";
-
-const COLLAB_ERROR_KEYS: Record<string, "editor.collabError" | "editor.connectionClosed"> = {
-  ERR_COLLAB_CONNECT: "editor.collabError",
-  ERR_CONNECTION_CLOSED: "editor.connectionClosed",
-};
 
 const UPLOAD_ERROR_KEYS: Record<string, "errors.E_NO_FILE" | "errors.E_FILE_TYPE" | "errors.E_FILE_SIZE" | "errors.E_UPLOAD"> = {
   E_NO_FILE: "errors.E_NO_FILE",
@@ -175,6 +172,7 @@ export function MobileDocView({
     },
     onDocUnavailable,
   });
+  const offline = useIsOffline(collab.isConnected);
   const { applyLocalChange } = collab;
 
   // 标题:聚焦期间编辑本地草稿,失焦/回车才写共享 meta(避免逐字广播改名)
@@ -194,11 +192,16 @@ export function MobileDocView({
     [applyLocalChange]
   );
 
+  // 所有权:进入时查一次;离线查不到就等恢复连接再查(否则离线打开的文档一直缺「删除」入口)
+  const reachable = useServerReachable();
   useEffect(() => {
+    if (reachable === false) return;
     getDocStatus(code)
       .then((s) => setIsOwner(s.status === "active" && s.isOwner))
-      .catch(() => setIsOwner(false));
-  }, [code]);
+      .catch(() => {
+        /* 离线/超时:保持现值,恢复连接后重查 */
+      });
+  }, [code, reachable]);
 
   const handleImageUpload = useCallback(
     async (file: File) => {
@@ -271,8 +274,10 @@ export function MobileDocView({
         <RoundButton label={t("mobile.back")} onClick={onClose} holdFocus={editing}>
           <LeftOutlined />
         </RoundButton>
+        {/* 离线:红色标签常驻顶栏(滚动/编辑时都看得到);修改照常写进本机 IndexedDB,联网后自动合并 */}
+        {offline && <OfflineTag />}
         <div
-          className={`absolute left-16 right-36 text-center text-base font-medium text-gray-900 truncate pointer-events-none transition-opacity ${
+          className={`absolute ${offline ? "left-32" : "left-16"} right-36 text-center text-base font-medium text-gray-900 truncate pointer-events-none transition-opacity ${
             scrolled ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -331,12 +336,6 @@ export function MobileDocView({
         </div>
       </header>
 
-      {collab.error && (
-        <div className="mx-4 mb-1 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 shrink-0">
-          {COLLAB_ERROR_KEYS[collab.error] ? t(COLLAB_ERROR_KEYS[collab.error]) : collab.error}
-        </div>
-      )}
-
       <div
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
         onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 56)}
@@ -369,13 +368,17 @@ export function MobileDocView({
               className="flex items-center gap-1 min-h-tap-38 -my-2"
             >
               <span
-                className={`size-1.5 rounded-full ${collab.isConnected ? "bg-green-500" : "bg-gray-300"}`}
+                className={`size-1.5 rounded-full ${
+                  collab.isConnected ? "bg-green-500" : offline ? "bg-red-500" : "bg-gray-300"
+                }`}
               />
               {collab.isConnected
                 ? users.length > 1
                   ? t("home.nOnline", { n: users.length })
                   : t("roomHeader.connected")
-                : t("mobile.offline")}
+                : offline
+                  ? t("mobile.offline")
+                  : t("roomHeader.connecting")}
             </button>
           </div>
 

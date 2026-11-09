@@ -237,10 +237,13 @@ export function textPreview(markdown) {
   return '';
 }
 
-/** 活文档的当前共享名(内存 meta,不等 2s 防抖落库);未加载返回 null。 */
+/**
+ * 活文档的当前共享名(内存 meta,不等 2s 防抖落库)。未加载、或 meta 里从没设过名
+ * (如 POST /docs 时带 name 创建、尚无人改名)返回 null,由调用方回落到库里的 docs.name。
+ */
 export function liveDocName(code) {
-  const live = YDOCS.get(String(code ?? '').toUpperCase());
-  return live ? String(live.getMap('meta').get('roomName') ?? '').slice(0, 40) : null;
+  const meta = YDOCS.get(String(code ?? '').toUpperCase())?.getMap('meta');
+  return meta?.has('roomName') ? String(meta.get('roomName') ?? '').slice(0, 40) : null;
 }
 
 /** 文档列表预览:活文档读内存(始终最新),否则用缓存/解码快照。 */
@@ -274,11 +277,15 @@ function writeSnapshot(code, ydoc, now = Date.now()) {
   const slot = DEBOUNCED.get(code);
   if (slot && !slot.writable) return; // 停写后一律空操作(L19)
   const state = Y.encodeStateAsUpdate(ydoc);
-  const roomName = String(ydoc.getMap('meta').get('roomName') ?? '').slice(0, 40);
+  const meta = ydoc.getMap('meta');
+  // meta 从没设过名时保留库里的 docs.name(创建时带的名),不拿空串覆盖
+  const roomName = meta.has('roomName') ? String(meta.get('roomName') ?? '').slice(0, 40) : null;
   const text = ydoc.getText('document').toString();
   // 快照与引用 diff 同一事务;refs 无变化时 applyRefs 不写任何行(L20)
   withTx(() => {
-    getDb().prepare('UPDATE docs SET state = ?, name = ? WHERE code = ?').run(state, roomName, code);
+    getDb()
+      .prepare('UPDATE docs SET state = ?, name = COALESCE(?, name) WHERE code = ?')
+      .run(state, roomName, code);
     applyRefs(code, text, now);
   });
   PREVIEW_CACHE.set(code, textPreview(text));

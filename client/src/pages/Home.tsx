@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { upsertRecentRoom } from "@/lib/storage";
 import { formatRelative } from "@/lib/roomCode";
 import { getServerBase, saveServer } from "@/lib/serverConfig";
@@ -29,6 +29,8 @@ import { isDesktopTauri } from "@/platform";
 import { onTrayAction, pushRecentRooms } from "@/platform/tray";
 import { useBackHandler } from "@/platform/backButton";
 import { docTitle } from "@/lib/docTitle";
+import { useServerReachable } from "@/lib/connectivity";
+import { OfflineTag } from "@/components/OfflineTag";
 import { useIsMobile } from "@/lib/useIsMobile";
 import { MobileHome } from "@/components/mobile/MobileHome";
 import { MobileDocView } from "@/components/mobile/MobileDocView";
@@ -55,7 +57,8 @@ export default function Home() {
     setMyRooms(rooms);
     cacheRooms(rooms);
   }, []);
-  const [serverOk, setServerOk] = useState<boolean | null>(null);
+  // 连通性是全局状态(lib/connectivity):authFetch 的成败自动上报,这里只读
+  const serverOk = useServerReachable();
   const [qrFor, setQrFor] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [shareSite, setShareSite] = useState(false);
@@ -80,11 +83,20 @@ export default function Home() {
       const data = await res.json();
       roomsFromServer(Array.isArray(data?.rooms) ? data.rooms : []);
       setPendingPairings(Number(data?.pendingPairings ?? 0));
-      setServerOk(true);
     } catch {
-      setServerOk(false);
+      /* 离线:保留离线快照;连通性已由 authFetch 上报 */
     }
   }, [roomsFromServer]);
+
+  // 服务器从离线恢复:立即刷新列表(不等 15s 轮询);启动时 null→true 不重复拉
+  const wasOffline = useRef(false);
+  useEffect(() => {
+    if (serverOk === false) wasOffline.current = true;
+    else if (serverOk && wasOffline.current) {
+      wasOffline.current = false;
+      void fetchMine();
+    }
+  }, [serverOk, fetchMine]);
 
   // 离开/切换文档立即刷新列表:刚写的正文开头(未命名文档的列表标题)不必等 15s 轮询
   const prevActive = useRef(activeCode);
@@ -123,23 +135,38 @@ export default function Home() {
   }, [hasPairings, pairOpen, pendingPairings, refreshPairings]);
   const pairNeedsConfirm = pendingPairings > 0 || pairings.some((p) => p.status === "claimed");
 
-  // 统一打开文档:先查状态(L4 显式语义)→ 登记 → 右栏面板打开(不再跳完整编辑器)
+  // 文档不可用(状态查询 missing/trashed,或协同 WS 4004/4010):仍是当前文档才关面板 + 提示,
+  // 两条来源先到先得,不重复弹窗
+  const activeRef = useRef(activeCode);
+  useEffect(() => {
+    activeRef.current = activeCode;
+  }, [activeCode]);
+  const closeUnavailable = useCallback(
+    (code: string, kind: "missing" | "trashed") => {
+      if (activeRef.current !== code) return;
+      activeRef.current = null;
+      setActiveCode(null);
+      if (kind === "missing") clearRoomCache(code);
+      void fetchMine();
+      alert(kind === "trashed" ? t("docs.trashedAlert") : t("docs.missingAlert"));
+    },
+    [fetchMine, t]
+  );
+
+  // 统一打开文档:立即打开面板(本机 IndexedDB 先出内容,离线照样能编辑),状态查询与登记在后台进行。
+  // 以前先 await 状态查询再打开 —— 服务器不可达时 fetch 一挂就是几十秒,表现为「离线打不开文档」。
   const enterRoom = useCallback(
-    async (code: string) => {
+    (code: string) => {
       const upper = code.toUpperCase().slice(0, 8);
-      try {
-        const st = await getDocStatus(upper);
-        if (st.status === "missing") {
-          alert(t("docs.missingAlert"));
-          return;
-        }
-        if (st.status === "trashed") {
-          alert(t("docs.trashedAlert"));
-          return;
-        }
-      } catch {
-        /* 状态查询失败不阻断(离线时凭缓存进入) */
-      }
+      activeRef.current = upper;
+      setActiveCode(upper);
+      getDocStatus(upper)
+        .then((st) => {
+          if (st.status !== "active") closeUnavailable(upper, st.status);
+        })
+        .catch(() => {
+          /* 离线/超时:凭本机缓存继续编辑,联网后协同 WS 自会校验(4004/4010) */
+        });
       const existing = myRooms.find((r) => r.code === upper)?.name ?? "";
       authFetch(`${getServerBase()}/rooms/enter`, {
         method: "POST",
@@ -152,9 +179,8 @@ export default function Home() {
           /* 登记失败不阻断进房 */
         });
       upsertRecentRoom({ code: upper, name: existing });
-      setActiveCode(upper);
     },
-    [myRooms, t]
+    [myRooms, closeUnavailable, roomsFromServer]
   );
 
   // ?open=CODE:直接打开某文档(移动端扫码落地经 /editor 转来);处理一次后清掉参数
@@ -163,12 +189,17 @@ export default function Home() {
     const code = searchParams.get("open");
     if (!code || openedRef.current) return;
     openedRef.current = true;
-    void enterRoom(code);
+    enterRoom(code);
     navigate("/", { replace: true });
   }, [searchParams, enterRoom, navigate]);
 
   // 新建:服务端生成码,创建者即所有者;直接在右栏打开
   const handleCreateNew = async () => {
+    // 文档码由服务端分配,离线建不了;直接说清楚,而不是笼统的「创建失败」
+    if (serverOk === false) {
+      alert(t("offline.createBlocked"));
+      return;
+    }
     try {
       const { code } = await createDoc();
       upsertRecentRoom({ code, name: "" });
@@ -187,7 +218,7 @@ export default function Home() {
       document.getElementById("roomCode")?.focus();
       return;
     }
-    void enterRoom(code);
+    enterRoom(code);
   };
 
   // 扫码/粘贴 → 统一 intake:join 进房;pair 转落地页(push 登录 / pull 批准由它分派)
@@ -201,7 +232,7 @@ export default function Home() {
     if (intake.type === "join") {
       if (intake.server) saveServer(intake.server);
       setRoomCode(intake.code);
-      void enterRoom(intake.code);
+      enterRoom(intake.code);
       return;
     }
     if (intake.type === "pair") {
@@ -263,14 +294,7 @@ export default function Home() {
   };
 
   // 面板内文档不可用(4004/4010):关面板 + 刷列表
-  const handlePaneUnavailable = useCallback(
-    (_code: string, kind: "missing" | "trashed") => {
-      setActiveCode(null);
-      void fetchMine();
-      alert(kind === "trashed" ? t("docs.trashedAlert") : t("docs.missingAlert"));
-    },
-    [fetchMine, t]
-  );
+  const handlePaneUnavailable = closeUnavailable;
 
   // 退出登录 = 服务端吊销本机凭据 + 清全部本地(凭据/文档缓存/最近房间)
   const logout = async () => {
@@ -352,7 +376,7 @@ export default function Home() {
           accountId={account?.id}
           pairNeedsConfirm={pairNeedsConfirm}
           initialJoinCode={roomCode}
-          onOpen={(code) => void enterRoom(code)}
+          onOpen={(code) => enterRoom(code)}
           onCreate={() => void handleCreateNew()}
           onScan={() => setScanOpen(true)}
           onShare={setQrFor}
@@ -392,6 +416,7 @@ export default function Home() {
       <header className="flex items-center gap-4 px-6 py-3 shrink-0">
         <div className="hidden md:flex items-baseline gap-3 min-w-0 shrink">
           <h1 className="text-2xl font-bold text-gray-900 shrink-0">{t("common.appName")}</h1>
+          {serverOk === false && <OfflineTag className="self-center" />}
           <p className="text-sm text-gray-500 truncate hidden lg:block">{t("common.taglineShort")}</p>
         </div>
         {/* 加入/新建拆进顶栏(联调反馈):文档码输入(扫码作 suffix) + 加入 + 新建,左栏只留列表 */}
@@ -464,17 +489,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* 服务器不可达细条引导 */}
-      {serverOk === false && (
-        <div className="mx-6 mb-2 rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-2 text-sm text-yellow-800 shrink-0">
-          {t("home.serverUnreachableBefore")}
-          <Link to="/settings" className="font-semibold underline underline-offset-2">
-            {t("home.serverUnreachableLink")}
-          </Link>
-          {t("home.serverUnreachableAfter")}
-        </div>
-      )}
-
       {/* 主体:桌面双栏一屏;移动单列纵排(列表内部滚动) */}
       <main className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 px-4 md:px-6 pb-4 md:pb-6 pt-3 min-h-0">
         {/* 左栏:我的文档列表(加入/新建已移到顶栏) */}
@@ -510,7 +524,7 @@ export default function Home() {
                         >
                           <button
                             type="button"
-                            onClick={() => void enterRoom(room.code)}
+                            onClick={() => enterRoom(room.code)}
                             aria-label={docTitle(room, t("common.unnamedDoc"))}
                             className="absolute inset-0 z-0 rounded-lg"
                           />

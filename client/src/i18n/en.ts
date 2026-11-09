@@ -6,6 +6,13 @@ type Shape = {
 };
 
 export const en = {
+  offline: {
+    tag: "Offline",
+    title: "Can't reach the server",
+    desc: "Your edits are saved on this device and sync automatically once you're back online.",
+    checkServer: "Check server address",
+    createBlocked: "You can't create documents while offline — please retry once connected",
+  },
   common: {
     appName: "Polyphony",
     taglineShort: "Many voices. One score.",
@@ -29,9 +36,6 @@ export const en = {
     myRooms: "My documents",
     nOnline: "{n} online",
     showQrTitle: "Show QR code",
-    serverUnreachableBefore: "Cannot reach the collaboration server. If it is hosted elsewhere, go to",
-    serverUnreachableLink: "Settings",
-    serverUnreachableAfter: "and set the direct address (e.g. http://IP:PORT).",
     featureSyncTitle: "Realtime sync",
     featureRichTitle: "Rich text together",
     lastUsed: "Last used",
@@ -77,7 +81,7 @@ export const en = {
     redo: "Redo",
     done: "Done",
     nChars: "{n} chars",
-    offline: "Editing offline",
+    offline: "Saved locally · syncs when online",
     textFormat: "Text format",
     heading1: "Title",
     heading2: "Heading",
@@ -138,11 +142,9 @@ export const en = {
 
   editor: {
     docContent: "Document",
-    connectionClosed: "Connection closed",
     charCount: "{n} chars",
     uploadFail: "Image upload failed: {msg}",
     unknownError: "Unknown error",
-    collabError: "Cannot reach the realtime collaboration service",
     exportBtn: "Export",
     deleteBtn: "Delete",
     imagePrepFail: "Could not process the image (unsupported format or too large)",
@@ -210,6 +212,7 @@ export const en = {
     invite: "Send invite",
     connected: "Connected",
     disconnected: "Offline",
+    connecting: "Connecting…",
     leave: "Leave document",
   },
 
