@@ -90,6 +90,8 @@
 | adb 无人值守测返回手势 | 后台放置 ≥2 分钟后首个注入手势「失效」 | 屏幕已进入变暗态,首个 ACTION_DOWN 被 MIUI 用来亮屏(日志 `set display0 dim state 0`);`KEYCODE_WAKEUP` 不解除变暗。测试先点一下非交互区域再划,勿误判为应用问题 |
 | Android edge-to-edge(沉浸式) | WebView 画进状态栏/手势条下,页面、弹层、遮罩各自垫 `env(safe-area-inset-*)`,漏一处就顶进状态栏 | 模板 `enableEdgeToEdge()` + targetSdk 35+ 强制、SDK 36 起主题 opt-out 失效;`android-patch.mjs` 给 MainActivity 打 `applySystemBarPadding`:系统栏 inset 作内容区 padding 吃掉(WebView 的 safe-area 归零),状态栏区白底深色图标 |
 | 离线冷启动身份 | `/auth/me` 失败 → 账号 null:顶栏「匿名用户」、列表空、文档打不开 | `useAccount`/首页用上次在线的账号与房间簿快照(`polyphony.account`/`polyphony.roomsCache`,绑定设备凭据 deviceId,换号不串);只有 401/403 才清,网络失败保留;退出登录一并清 |
+| 离线打不开文档 | 服务器 IP 不可达(换网/宕机)时点文档没反应或要等很久;只有长条黄色提示,没有明确状态 | 根因:打开前 `await getDocStatus` 且 fetch 无超时——连接被黑洞时挂几十秒到数分钟(连接被拒时才秒败,本地停服复现不出来)。现在 `authFetch` 默认 8s 超时;`enterRoom` 先打开面板(IndexedDB 出内容),状态查询放后台,missing/trashed 与 WS 4004/4010 共用 `closeUnavailable` 去重;连通性收敛到 `lib/connectivity.ts`(HTTP 成败 + WS + online/offline 事件,离线时 5s 探测 `/health`),各端只显示 `OfflineTag`。测「不可达」用 e2e `simulateOutage`(请求挂起不回),别用 `route.abort` |
+| 带名创建的文档打开后列表名变空 | `POST /docs {name}` 建的文档,一打开(活文档进内存)列表就显示「未命名」 | meta 里从没设过 `roomName` 时 `liveDocName` 返回 null 回落 `docs.name`,落库用 `COALESCE` 不拿空串覆盖;只有显式改名(含改成空)才以 meta 为准 |
 | 真机长按后不派发 click | 长按多选后，下一次正常点击被吞 | 抑制 click 的标记在每次 pointerdown 时清零；e2e 有「松手后无 click」用例 |
 
 ## 后续路线（v2 候选）
