@@ -61,6 +61,9 @@
 | 交错插入拆散标记 | substring 断言假失败 | 冒烟按括号对计数断言 |
 | e2e 共享房间码 | 并行 worker 人数互相串扰 | 每用例 `uniqRoom()` |
 | `useLocalStorageState` 存 JSON | 裸读 localStorage 拿到带引号的 `"张三"` | 一律走 `storage.ts` 解析函数（getSavedUsername 等） |
+| 服务端 Yjs 双实例（ESM `yjs.mjs` vs y-websocket 内 CJS `yjs.cjs`） | 文档卸载→从快照重载后，客户端新编辑被静默丢弃；快照里出现 GC 结构且永久"中毒"（之后基于它的插入都按 GC 集成） | 服务端一律 `import Y from './yjs.js'`（createRequire 取 CJS 单例）；`docStore.test.js` 有双实例回归 |
+| MDXEditor `markdown` 属性只在挂载时读一次 | 首页桌面面板(DocPane)打开文档一片空白、他人输入不出现;在空白编辑器敲一个字,`applyLocalChange` 的 diff 会把全文删掉(对所有人生效) | 任何承载协同正文的 MDXEditor 都必须 `ref.setMarkdown` 写入远端内容(Editor.tsx / MobileDocView / DocPane 同一写法),onChange 忽略 initialNormalize 与 setMarkdown 回声;面板按文档码 `key` 重挂。e2e `home.spec.ts`「首页文档面板内容同步(回归)」 |
+| 远端更新落在 setMarkdown 回声窗口内 | 对端快速连打时本端漏字、两端不收敛 | 远端更新一律写入编辑器，只用 `fromRemote` 标记屏蔽本地 onChange 回写 |
 
 ### 运维/网络
 
@@ -81,6 +84,13 @@
 | 非安全上下文无 clipboard API | http://IP 直连时复制崩 | `navigator.clipboard?.` 判空 + textarea/execCommand 降级 + 失败提示手码 |
 | barcode-scanner 插件成熟度 | iOS scan 不返回、QR 配置 bug、16KB page size | Android 才用插件，其余 jsQR 兜底；iOS 不出包；16KB 合规未专项验证（上架前处理） |
 | `src-tauri/gen/` 生成物 | 合入仓库即污染 | 不入库，`android:init`/CI 现场生成 |
+| Android WebView 软键盘（edge-to-edge） | `innerHeight`/`100dvh` 不变，键盘盖住工具栏/输入框 | 布局用 `viewport.ts` 写的 `--vvh`/`--vv-top`/`--kb-safe-bottom`（来自 visualViewport） |
+| Android 根页返回调 `app.exit()` | 进程在析构阶段原生崩溃（`FORTIFY: pthread_mutex_lock called on a destroyed mutex`），MIUI 随后拉起顶层 Activity 再崩一次 → 用户看到「退出后再启动闪退一次」 | Tauri 2.12 的 exit = `finishAffinity` + tao `std::process::exit`，与 WebView 线程竞争静态析构；根页返回改调自有命令 `move_task_to_back`（JNI `moveTaskToBack(true)`，与 Android 12+ 系统默认一致），capability 不再授 `core:app:allow-exit` |
+| 软键盘收起后焦点仍留在输入框/正文 | 返回手势被输入法吃掉收键盘后页面仍是编辑态,编辑中退到后台要划 4 次 | `viewport.ts` 在触屏设备键盘由开到合时 blur 当前可编辑元素(编辑态随焦点结束) |
+| adb 无人值守测返回手势 | 后台放置 ≥2 分钟后首个注入手势「失效」 | 屏幕已进入变暗态,首个 ACTION_DOWN 被 MIUI 用来亮屏(日志 `set display0 dim state 0`);`KEYCODE_WAKEUP` 不解除变暗。测试先点一下非交互区域再划,勿误判为应用问题 |
+| Android edge-to-edge(沉浸式) | WebView 画进状态栏/手势条下,页面、弹层、遮罩各自垫 `env(safe-area-inset-*)`,漏一处就顶进状态栏 | 模板 `enableEdgeToEdge()` + targetSdk 35+ 强制、SDK 36 起主题 opt-out 失效;`android-patch.mjs` 给 MainActivity 打 `applySystemBarPadding`:系统栏 inset 作内容区 padding 吃掉(WebView 的 safe-area 归零),状态栏区白底深色图标 |
+| 离线冷启动身份 | `/auth/me` 失败 → 账号 null:顶栏「匿名用户」、列表空、文档打不开 | `useAccount`/首页用上次在线的账号与房间簿快照(`polyphony.account`/`polyphony.roomsCache`,绑定设备凭据 deviceId,换号不串);只有 401/403 才清,网络失败保留;退出登录一并清 |
+| 真机长按后不派发 click | 长按多选后，下一次正常点击被吞 | 抑制 click 的标记在每次 pointerdown 时清零；e2e 有「松手后无 click」用例 |
 
 ## 后续路线（v2 候选）
 
