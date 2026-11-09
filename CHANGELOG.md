@@ -3,6 +3,13 @@
 本文件记录面向用户的显著变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [4.0.3] - 2026-11-10
+
+### 修复
+
+- **Docker 镜像启动失败**:4.0.1 起服务端新增的模块没被打进镜像,容器启动即报 `ERR_MODULE_NOT_FOUND`。Dockerfile 改为按通配复制服务端源码。**用 Docker 自托管 4.0.1 / 4.0.2 的请升级到本版本。**
+- 部署流水线:换容器前按名停掉旧容器(兼容其他 compose 项目起的同名容器);回滚点改为构建前取线上容器的镜像。
+
 ## [4.0.2] - 2026-11-10
 
 ### 变更

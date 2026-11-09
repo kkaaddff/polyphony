@@ -92,6 +92,8 @@
 | 离线冷启动身份 | `/auth/me` 失败 → 账号 null:顶栏「匿名用户」、列表空、文档打不开 | `useAccount`/首页用上次在线的账号与房间簿快照(`polyphony.account`/`polyphony.roomsCache`,绑定设备凭据 deviceId,换号不串);只有 401/403 才清,网络失败保留;退出登录一并清 |
 | 离线打不开文档 | 服务器 IP 不可达(换网/宕机)时点文档没反应或要等很久;只有长条黄色提示,没有明确状态 | 根因:打开前 `await getDocStatus` 且 fetch 无超时——连接被黑洞时挂几十秒到数分钟(连接被拒时才秒败,本地停服复现不出来)。现在 `authFetch` 默认 8s 超时;`enterRoom` 先打开面板(IndexedDB 出内容),状态查询放后台,missing/trashed 与 WS 4004/4010 共用 `closeUnavailable` 去重;连通性收敛到 `lib/connectivity.ts`(HTTP 成败 + WS + online/offline 事件,离线时 5s 探测 `/health`),各端只显示 `OfflineTag`。测「不可达」用 e2e `simulateOutage`(请求挂起不回),别用 `route.abort` |
 | 带名创建的文档打开后列表名变空 | `POST /docs {name}` 建的文档,一打开(活文档进内存)列表就显示「未命名」 | meta 里从没设过 `roomName` 时 `liveDocName` 返回 null 回落 `docs.name`,落库用 `COALESCE` 不拿空串覆盖;只有显式改名(含改成空)才以 meta 为准 |
+| Dockerfile 逐个列服务端文件 | 新增模块(4.0.1 的 `server/yjs.js`)没进镜像,容器启动即 `ERR_MODULE_NOT_FOUND`;本地 dev/单测/e2e 全绿也发现不了 | `COPY server/*.js`(单测由 `.dockerignore` 排除);发版前可在 fnos 上以独立镜像名 + 数据副本预检(health + 容器内冒烟) |
+| CI 换容器撞名 / 回滚点取错 | `container name "/polyphony" is already in use`(旧容器由手动回滚的另一 compose 项目起);回滚点在构建后 tag latest,实际是新版本自己 | 换容器前 `docker stop -t 15 polyphony && docker rm`;回滚点在构建前取 `docker inspect -f '{{.Image}}' polyphony` |
 | 真机长按后不派发 click | 长按多选后，下一次正常点击被吞 | 抑制 click 的标记在每次 pointerdown 时清零；e2e 有「松手后无 click」用例 |
 
 ## 后续路线（v2 候选）
