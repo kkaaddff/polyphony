@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="zh-CN" data-paper="cool" data-accent="sky">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polyphony 复调 · 多个声部，一份总谱 — 实时协同文档</title>
+<meta name="description" content="Polyphony(复调)是一款打开即写、断网不慌的实时协同文档工具。多人同写、扫码即加入、语音便签、语音输入到电脑,数据可完全自托管。">
+<meta property="og:title" content="Polyphony 复调 · 多个声部，一份总谱">
+<meta property="og:description" content="打开即写、断网不慌的实时协同文档。多人同写、扫码即加入、语音便签、数据自托管。">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Crect width='1024' height='1024' rx='228' fill='%234f46e5'/%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cpath d='M -80 512 C 48 254 176 254 304 512 C 432 770 560 770 688 512 C 816 254 944 254 1090 512' stroke='%23f8fafc' stroke-width='98'/%3E%3Cpath d='M -80 770 C 48 770 176 512 304 512 C 432 512 560 254 688 254 C 816 254 944 512 1090 512' stroke='%237dd3fc' stroke-width='98'/%3E%3Cpath d='M -80 254 C 48 254 176 512 304 512 C 432 512 560 770 688 770 C 816 770 944 512 1090 512' stroke='%23f8fafc' stroke-width='98'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+@font-face{font-family:"Newsreader";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/newsreader-italic-400-latin.woff2) format("woff2")}
+@font-face{font-family:"Newsreader";font-style:normal;font-weight:200 800;font-display:swap;src:url(fonts/newsreader-var-latin.woff2) format("woff2")}
+
+/* ===== 设计令牌(手稿纸 + 蓝黑墨水;冷纸 + 天蓝,与确认稿一致) ===== */
+:root{
+  color-scheme:light;
+  --paper:#f5f6f8; --paper-deep:#eef0f3; --sheet:#ffffff; --sheet-tint:#fafbfc;
+  --ink:#1b1c26; --ink-2:#4a4c59; --ink-3:#6c6e7b; --ink-4:#9a9ba6; --ink-5:#c3c4cc;
+  --fill-1:rgba(27,28,38,.045); --fill-2:rgba(27,28,38,.075); --fill-3:rgba(27,28,38,.12);
+  --line:rgba(27,28,38,.1); --line-strong:rgba(27,28,38,.18);
+  --accent-50:#e8f6fd; --accent-100:#d0edfb; --accent-200:#a5dcf6; --accent-400:#0ea5e9;
+  --accent:#0284c7; --accent-700:#036aa1; --accent-800:#075985; --accent-ink:#fff; --accent-ring:rgba(2,132,199,.3);
+  --sky:#7dd3fc;
+  --ok:#178a5b; --ok-bg:#e3f3ea; --ok-line:#bfe3cf;
+  --warn:#94610f; --warn-bg:#faf0da; --warn-line:#eeddab;
+  --danger:#c4303d; --danger-bg:#fbebec; --danger-line:#f1c8ca;
+  --v1:#4f46e5; --v2:#0284c7; --v3:#7c3aed; --v4:#d23c69; --v5:#0d8a72; --v6:#b7791f; --v7:#d9563c; --v8:#9c4bb5;
+  --font-ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro SC","PingFang SC","Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC","Noto Sans CJK SC","Source Han Sans SC","HarmonyOS Sans SC","MiSans",system-ui,sans-serif;
+  --font-display:"Newsreader",ui-serif,"New York","Iowan Old Style",Georgia,serif;
+  --font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --r-6:6px; --r-10:10px; --r-14:14px; --r-20:20px; --r-full:999px;
+  --sh-sm:0 1px 2px rgba(27,28,38,.06),0 0 0 1px rgba(27,28,38,.05);
+  --sh-md:0 4px 12px rgba(27,28,38,.08),0 12px 32px rgba(27,28,38,.1),0 0 0 1px rgba(27,28,38,.06);
+  --sh-lg:0 24px 64px rgba(27,28,38,.18),0 8px 24px rgba(27,28,38,.1),0 0 0 1px rgba(27,28,38,.06);
+  --sh-float:0 8px 28px rgba(27,28,38,.16);
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:84px;overflow-x:hidden}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-ui);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:clip}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+svg.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+::selection{background:var(--accent-200)}
+.serif{font-family:var(--font-display);font-weight:400;letter-spacing:-.015em}
+.serif-i{font-family:var(--font-display);font-style:italic;font-weight:400;letter-spacing:-.01em}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums}
+
+/* ===== 顶栏 ===== */
+.top{position:sticky;top:0;z-index:100;background:rgba(245,246,248,.85);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1180px;margin:0 auto;padding:11px 24px;display:flex;align-items:center;gap:14px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:660;font-size:15px;letter-spacing:-.01em}
+.brand svg{width:27px;height:27px;border-radius:7px;box-shadow:0 4px 10px rgba(30,27,75,.28)}
+.brand .word{font-family:var(--font-display);font-size:20px;font-weight:500;letter-spacing:-.02em}
+.brand small{font-weight:500;color:var(--ink-3);font-size:12px}
+.nav{display:flex;gap:2px;margin-left:8px}
+.nav a{padding:6px 12px;border-radius:8px;font-size:13.5px;font-weight:560;color:var(--ink-2);transition:all .15s var(--ease)}
+.nav a:hover{background:var(--fill-2);color:var(--ink)}
+.top .cta{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+/* ===== 按钮 ===== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 18px;border-radius:var(--r-10);font-size:14.5px;font-weight:590;white-space:nowrap;transition:all .12s var(--ease)}
+.btn:active{transform:scale(.975)}
+.btn svg{width:17px;height:17px}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 1px 2px rgba(27,28,38,.16)}
+.btn-primary:hover{background:var(--accent-700)}
+.btn-secondary{background:var(--sheet);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.btn-secondary:hover{background:var(--sheet-tint)}
+.btn-ghost{color:var(--ink-2)}
+.btn-ghost:hover{background:var(--fill-2);color:var(--ink)}
+.btn-lg{height:48px;padding:0 24px;font-size:15.5px;border-radius:12px}
+.btn-sm{height:32px;padding:0 13px;font-size:13px}
+
+/* ===== 布局 ===== */
+.main{max-width:1180px;margin:0 auto;padding:0 24px}
+.sec{padding:76px 0 8px}
+.kicker{font-size:12px;font-weight:660;letter-spacing:.14em;color:var(--accent);text-transform:uppercase}
+.h1{font-weight:700;font-size:clamp(30px,4vw,42px);line-height:1.18;letter-spacing:-.022em;margin:10px 0 12px}
+.h1 em{font-family:var(--font-display);font-style:italic;font-weight:400;letter-spacing:-.01em}
+.lead{font-size:16.5px;line-height:1.75;color:var(--ink-2);max-width:620px}
+.sec-head{max-width:640px;margin-bottom:30px}
+
+/* ===== Hero ===== */
+.hero{position:relative;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:48px;align-items:center;padding:72px 0 24px}
+.hero .display{font-family:var(--font-display);font-weight:400;font-size:clamp(52px,7vw,92px);line-height:.98;letter-spacing:-.03em;margin:14px 0 0}
+.hero .display em{font-style:italic}
+.hero .display .sky{color:var(--accent)}
+.hero .lead{margin-top:24px;font-size:17.5px;max-width:30em}
+.hero .actions{display:flex;gap:12px;margin-top:30px;flex-wrap:wrap}
+.hero .note{margin-top:16px;font-size:13px;color:var(--ink-3)}
+.hero-art{position:relative;height:440px}
+.pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:40px 0 0}
+.pillar{background:var(--sheet);border-radius:16px;padding:18px;box-shadow:var(--sh-sm)}
+.pillar .ic{width:38px;height:38px;border-radius:10px;background:var(--accent-50);color:var(--accent-700);display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.pillar .ic svg{width:20px;height:20px}
+.pillar b{display:block;font-size:15.5px;font-weight:660;letter-spacing:-.01em}
+.pillar span{display:block;font-size:13px;color:var(--ink-3);margin-top:5px;line-height:1.6}
+
+/* 品牌辫(动画) */
+.braid{position:absolute;inset:auto -6% 0 -6%;width:112%;pointer-events:none;z-index:1}
+.braid .wave{fill:none;stroke-linecap:round}
+.braid .halo{stroke:var(--paper);stroke-width:15}
+.braid .w1,.braid .w3{stroke:var(--ink);stroke-width:9.5}
+.braid .w2{stroke:var(--accent);stroke-width:9.5}
+.hero-card{position:absolute;background:var(--sheet);border-radius:16px;box-shadow:var(--sh-md);padding:14px 16px;z-index:2}
+.hero-card.hc1{top:6%;left:2%;width:230px;animation:float1 7s ease-in-out infinite}
+.hero-card.hc2{bottom:14%;right:0;width:250px;animation:float2 8s ease-in-out infinite}
+@keyframes float1{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+@keyframes float2{0%,100%{transform:translateY(0)}50%{transform:translateY(10px)}}
+.hc-row{display:flex;align-items:center;gap:8px}
+.hc-title{font-size:14px;font-weight:640}
+.hc-meta{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.hc-line{height:8px;border-radius:4px;background:var(--fill-2);margin-top:9px}
+.hc-line.w60{width:60%}.hc-line.w80{width:80%}.hc-line.w45{width:45%}
+
+/* ===== 通用零件 ===== */
+.tag{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:6px;font-size:11px;font-weight:590;line-height:1;white-space:nowrap}
+.tag-shared{background:var(--fill-2);color:var(--ink-3)}
+.tag-accent{background:var(--accent-50);color:var(--accent-800)}
+.tag-ok{background:var(--ok-bg);color:var(--ok)}
+.tag-warn{background:var(--warn-bg);color:var(--warn)}
+.avatar{display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:50%;color:#fff;font-weight:640;width:28px;height:28px;font-size:12px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.avatar.sm{width:22px;height:22px;font-size:10px}
+.avatar.lg{width:36px;height:36px;font-size:14px}
+.stack{display:flex;align-items:center}
+.stack .avatar{margin-left:-7px;box-shadow:0 0 0 2px var(--sheet),inset 0 0 0 1px rgba(255,255,255,.14)}
+.stack .avatar:first-child{margin-left:0}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
+.dot.red{background:var(--danger)}
+.dot.idle{background:var(--ink-5)}
+.voice{display:inline-flex;align-items:flex-end;gap:2px;height:12px}
+.voice i{display:block;width:2.5px;height:100%;border-radius:2px;background:var(--ok);transform-origin:bottom;animation:voice 1.1s ease-in-out infinite}
+.voice i:nth-child(2){animation-delay:.18s}.voice i:nth-child(3){animation-delay:.36s}
+@keyframes voice{0%,100%{transform:scaleY(.45)}50%{transform:scaleY(1)}}
+
+/* ===== 特性行:文字 + 演示 ===== */
+.feature{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:48px;align-items:center;padding:48px 0}
+.feature.rev{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr)}
+.feature.rev .f-copy{order:2}
+.feature.rev .f-demo{order:1}
+.f-copy .kicker{display:inline-flex;align-items:center;gap:8px}
+.f-copy .kicker .fic{width:30px;height:30px;border-radius:9px;background:var(--accent-50);color:var(--accent-700);display:inline-flex;align-items:center;justify-content:center}
+.f-copy .kicker .fic svg{width:17px;height:17px}
+.f-copy h2{font-size:clamp(24px,3vw,32px);font-weight:700;letter-spacing:-.02em;line-height:1.22;margin:14px 0 12px}
+.f-copy p{font-size:15.5px;line-height:1.75;color:var(--ink-2);margin:0 0 14px}
+.f-points{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}
+.f-points li{display:flex;gap:9px;font-size:14px;color:var(--ink-2);line-height:1.55}
+.f-points li svg{width:17px;height:17px;color:var(--accent);flex:none;margin-top:2px}
+.f-demo{position:relative}
+
+/* 演示舞台 */
+.stage{position:relative;border-radius:20px;background:linear-gradient(180deg,var(--sheet-tint),var(--paper-deep));box-shadow:var(--sh-sm);overflow:hidden;padding:28px;display:flex;align-items:center;justify-content:center;min-height:420px}
+.stage-cap{position:absolute;left:20px;top:16px;font-size:11.5px;font-weight:640;color:var(--ink-4);letter-spacing:.04em;z-index:6}
+
+/* 桌面稿纸演示 */
+.sheet-demo{width:100%;max-width:520px;background:var(--sheet);border-radius:14px;box-shadow:var(--sh-md);overflow:hidden}
+.sd-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.sd-title{font-size:15px;font-weight:660;flex:1;min-width:0}
+.sd-live{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ok);font-weight:590}
+.sd-body{padding:20px 24px 26px;font-size:14.5px;line-height:1.85;min-height:230px}
+.sd-body p{margin:0 0 10px}
+.sd-body h3{font-size:17px;font-weight:680;margin:14px 0 6px}
+.caret{display:inline-block;width:2px;height:1.1em;vertical-align:-.18em;margin:0 -1px;border-radius:1px;animation:blink 1s steps(2) infinite}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+.peer-flag{position:relative;display:inline-block}
+.peer-flag .nm{position:absolute;left:-2px;bottom:calc(100% + 3px);padding:1px 6px;border-radius:5px 5px 5px 2px;color:#fff;font-size:10px;font-weight:640;line-height:15px;white-space:nowrap}
+
+/* 手机框 */
+.phone{position:relative;width:300px;height:620px;border-radius:42px;background:var(--ink);padding:8px;box-shadow:0 30px 60px rgba(27,28,38,.28),inset 0 0 0 1.5px rgba(255,255,255,.16);flex:none}
+.screen{position:relative;width:100%;height:100%;border-radius:35px;overflow:hidden;background:var(--paper);display:flex;flex-direction:column}
+.cam{position:absolute;left:50%;top:11px;transform:translateX(-50%);width:11px;height:11px;border-radius:50%;background:var(--ink);z-index:9;box-shadow:0 0 0 2px #0d0e13}
+.m-status{flex:none;height:36px;padding:0 22px 0 26px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:640}
+.m-status .icons{display:flex;align-items:center;gap:5px}
+.m-status .icons svg{width:15px;height:15px}
+.m-bar{flex:none;height:46px;padding:0 8px;display:flex;align-items:center;gap:2px}
+.m-ib{width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--ink);flex:none}
+.m-ib svg{width:20px;height:20px}
+.m-bar .grow{flex:1}
+.m-scroll{flex:1;min-height:0;overflow:hidden;position:relative}
+.m-doc-title{padding:2px 20px 0;font-size:25px;font-weight:720;letter-spacing:-.025em;line-height:1.2}
+.m-doc-meta{display:flex;align-items:center;gap:8px;padding:7px 20px 4px;font-size:12px;color:var(--ink-3)}
+.m-doc-meta .bar{width:1px;height:12px;background:var(--line-strong)}
+.status-pill{display:inline-flex;align-items:center;gap:6px;font-weight:590;color:var(--ink-2)}
+.m-body{padding:10px 20px 30px;font-size:15px;line-height:1.8}
+.m-body p{margin:0 0 9px}
+.m-body h3{font-size:16px;font-weight:680;margin:12px 0 5px}
+.m-body ul{list-style:disc;padding-left:20px;margin:4px 0 9px}
+.m-body li{margin:4px 0}.m-body li::marker{color:var(--ink-4)}
+.off-badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--r-full);background:var(--danger-bg);color:var(--danger);font-size:11.5px;font-weight:590;box-shadow:inset 0 0 0 1px var(--danger-line)}
+.toast-mini{position:absolute;left:50%;bottom:28px;transform:translateX(-50%) translateY(8px);background:var(--ink);color:#fff;font-size:12px;font-weight:590;padding:7px 14px;border-radius:var(--r-full);box-shadow:var(--sh-float);opacity:0;transition:all .3s var(--ease);z-index:8;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.toast-mini svg{width:14px;height:14px;color:#6ee7b7}
+.toast-mini.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* 扫码演示 */
+.scan-wrap{display:flex;align-items:center;gap:30px}
+.qr-card{background:var(--sheet);border-radius:18px;box-shadow:var(--sh-md);padding:20px;text-align:center;width:230px;flex:none}
+.qr-box{position:relative;width:180px;height:180px;margin:0 auto;padding:10px;border-radius:12px;box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.qr-box svg{width:100%;height:100%;display:block}
+.scan-line{position:absolute;left:8px;right:8px;height:2px;background:var(--accent);box-shadow:0 0 12px 2px var(--accent-ring);border-radius:2px;animation:scan 2.4s var(--ease) infinite}
+@keyframes scan{0%,100%{top:10px}50%{top:calc(100% - 12px)}}
+.qr-card .cap{font-size:13px;font-weight:640;margin-top:14px}
+.qr-card .sub{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.scan-phone .screen{background:var(--sheet)}
+.join-state{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;transition:opacity .4s var(--ease)}
+.join-state .big-ic{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.join-state .big-ic svg{width:32px;height:32px}
+.join-state.scanning .big-ic{background:var(--accent-50);color:var(--accent)}
+.join-state.joined .big-ic{background:var(--ok-bg);color:var(--ok)}
+.join-state h4{font-size:17px;font-weight:680;margin:0}
+.join-state p{font-size:12.5px;color:var(--ink-3);margin:0;line-height:1.6}
+.join-state.joined{opacity:0}
+.scan-phone.is-joined .join-state.scanning{opacity:0}
+.scan-phone.is-joined .join-state.joined{opacity:1}
+.pulse-ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);animation:pulse 1.8s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.8);opacity:.7}100%{transform:scale(1.5);opacity:0}}
+
+/* 便签手势演示 */
+.m-notes{display:flex;flex-direction:column;gap:10px;padding:6px 16px 20px}
+.note-wrap{position:relative;border-radius:16px;overflow:hidden;transition:height .3s var(--ease)}
+.note-bg{position:absolute;inset:0;display:flex;align-items:center;gap:7px;padding:0 18px;font-size:13px;font-weight:640;color:#fff;opacity:0}
+.note-bg svg{width:17px;height:17px}
+.note-bg.del{background:var(--danger);justify-content:flex-end}
+.note-bg.doc{background:var(--accent)}
+.note{position:relative;padding:12px 15px;border-radius:16px;background:var(--sheet);box-shadow:var(--sh-sm);transition:transform .35s var(--ease)}
+.note .meta{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink-3);margin-bottom:4px}
+.note .meta .dev{color:var(--ink-2);font-weight:590}
+.note .meta svg{width:13px;height:13px;color:var(--accent)}
+.note p{font-size:14px;line-height:1.65;margin:0}
+.note.gone{opacity:0;transform:scale(.9);transition:all .3s var(--ease)}
+.swipe-hint{position:absolute;left:0;right:0;bottom:14px;display:flex;justify-content:center;gap:18px;font-size:11.5px;color:var(--ink-3);z-index:5}
+.swipe-hint span{display:inline-flex;align-items:center;gap:5px}
+.swipe-hint svg{width:14px;height:14px}
+.swipe-hint .l{color:var(--danger)}.swipe-hint .r{color:var(--accent)}
+
+/* 语音输入演示 */
+.voice-wrap{display:flex;align-items:center;gap:16px;width:100%;justify-content:center}
+.voice-phone{width:200px;height:420px;border-radius:34px;flex:none}
+.voice-phone .screen{background:var(--sheet)}
+.vp-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center}
+.mic-btn{position:relative;width:76px;height:76px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px var(--accent-ring)}
+.mic-btn svg{width:32px;height:32px}
+.mic-btn .pulse-ring{border-color:var(--accent)}
+.vp-text{font-size:15px;line-height:1.7;color:var(--ink);min-height:76px}
+.vp-hint{font-size:11.5px;color:var(--ink-3)}
+.vp-wave{display:flex;align-items:flex-end;gap:3px;height:26px}
+.vp-wave i{width:3.5px;border-radius:2px;background:var(--accent);animation:voice 1s ease-in-out infinite}
+.vp-wave i:nth-child(1){height:40%}.vp-wave i:nth-child(2){height:80%;animation-delay:.1s}.vp-wave i:nth-child(3){height:100%;animation-delay:.2s}.vp-wave i:nth-child(4){height:65%;animation-delay:.3s}.vp-wave i:nth-child(5){height:45%;animation-delay:.4s}
+.pc-window{flex:1;min-width:0;max-width:280px;background:var(--sheet);border-radius:14px;box-shadow:var(--sh-md);overflow:hidden}
+.pc-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.pc-bar .d{width:10px;height:10px;border-radius:50%}
+.pc-bar .title{margin-left:8px;font-size:12px;color:var(--ink-3)}
+.pc-body{padding:18px 16px 22px}
+.pc-label{font-size:12px;color:var(--ink-3);margin-bottom:8px}
+.pc-field{min-height:84px;border-radius:10px;box-shadow:inset 0 0 0 1px var(--line-strong);padding:11px 13px;font-size:14px;line-height:1.7;color:var(--ink)}
+.pc-field .caret{background:var(--accent)}
+.pc-send{margin-top:12px;display:flex;justify-content:flex-end}
+.flow-arrow{color:var(--accent);flex:none}
+.flow-arrow svg{width:24px;height:24px;animation:nudge 1.6s ease-in-out infinite}
+@keyframes nudge{0%,100%{transform:translateX(0)}50%{transform:translateX(6px)}}
+
+/* ===== 更多特性网格 ===== */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px}
+.gcard{background:var(--sheet);border-radius:16px;padding:20px;box-shadow:var(--sh-sm)}
+.gcard .ic{width:40px;height:40px;border-radius:11px;background:var(--fill-1);color:var(--ink-2);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.gcard .ic svg{width:21px;height:21px}
+.gcard b{display:block;font-size:15.5px;font-weight:660;letter-spacing:-.01em}
+.gcard span{display:block;font-size:13px;color:var(--ink-3);margin-top:6px;line-height:1.65}
+
+/* ===== 自托管 ===== */
+.host{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:44px;align-items:center;background:linear-gradient(135deg,#3730a3 0%,#1e1b4b 100%);border-radius:24px;padding:48px;color:#fff;position:relative;overflow:hidden;margin-top:16px}
+.host::after{content:"";position:absolute;right:-60px;top:-60px;width:320px;height:320px;background:radial-gradient(closest-side,rgba(125,211,252,.3),transparent);pointer-events:none}
+.host .kicker{color:var(--sky)}
+.host h2{font-size:clamp(26px,3vw,34px);font-weight:700;letter-spacing:-.02em;margin:12px 0 14px;line-height:1.2}
+.host p{font-size:15px;line-height:1.75;color:rgba(255,255,255,.78);margin:0 0 18px}
+.host .btn-secondary{background:rgba(255,255,255,.12);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
+.host .btn-secondary:hover{background:rgba(255,255,255,.2)}
+.code{position:relative;background:rgba(13,14,19,.55);border-radius:14px;padding:20px 22px;font-family:var(--font-mono);font-size:13.5px;line-height:1.9;color:#e0e7ff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);white-space:pre;overflow-x:auto}
+.code .c{color:#8b8fa8}
+.code .k{color:#7dd3fc}
+.code .s{color:#6ee7b7}
+.host-list{margin:18px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
+.host-list li{display:flex;gap:9px;font-size:13.5px;color:rgba(255,255,255,.85)}
+.host-list li svg{width:17px;height:17px;color:var(--sky);flex:none;margin-top:2px}
+
+/* ===== 页脚 ===== */
+.footer{margin-top:88px;border-top:1px solid var(--line);padding:44px 0 60px;position:relative;overflow:hidden}
+.footer-in{max-width:1180px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;position:relative;z-index:1}
+.footer .tagline{font-family:var(--font-display);font-style:italic;font-size:22px;color:var(--ink-2)}
+.footer .links{margin-left:auto;display:flex;gap:18px;font-size:13.5px;color:var(--ink-3)}
+.footer .links a:hover{color:var(--accent)}
+.footer .fine{width:100%;font-size:12px;color:var(--ink-4);margin-top:8px}
+
+@media (max-width:920px){
+  .hero{grid-template-columns:1fr;gap:24px;padding-top:48px}
+  .hero-art{height:340px;order:-1}
+  .feature,.feature.rev{grid-template-columns:1fr;gap:26px}
+  .feature.rev .f-copy{order:1}.feature.rev .f-demo{order:2}
+  .pillars,.grid{grid-template-columns:1fr}
+  .host{grid-template-columns:1fr;padding:32px}
+  .nav{display:none}
+  .scan-wrap,.voice-wrap{flex-direction:column}
+  .flow-arrow svg{transform:rotate(90deg)}
+}
+@media (max-width:560px){
+  .top-in{padding:10px 16px;gap:8px}
+  .brand small{display:none}
+  .top .cta .btn-ghost{display:none}
+  .main{padding:0 16px}
+  .stage{padding:18px;min-height:0}
+  .hero{padding-top:36px}
+  .sec{padding-top:56px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+<!-- 图标 sprite(与设计稿同一套 1.75px 线性图标) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-logo" viewBox="0 0 1024 1024"><defs><linearGradient id="lg-brand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#1e1b4b"/></linearGradient></defs><rect width="1024" height="1024" rx="228" fill="url(#lg-brand)"/><g fill="none" stroke-linecap="round"><path d="M -80 512 C 48 254 176 254 304 512 C 432 770 560 770 688 512 C 816 254 944 254 1090 512" stroke="#1e1b4b" stroke-opacity="0.85" stroke-width="150"/><path d="M -80 512 C 48 254 176 254 304 512 C 432 770 560 770 688 512 C 816 254 944 254 1090 512" stroke="#f8fafc" stroke-width="98"/><path d="M -80 770 C 48 770 176 512 304 512 C 432 512 560 254 688 254 C 816 254 944 512 1090 512" stroke="#1e1b4b" stroke-opacity="0.85" stroke-width="150"/><path d="M -80 770 C 48 770 176 512 304 512 C 432 512 560 254 688 254 C 816 254 944 512 1090 512" stroke="#7dd3fc" stroke-width="98"/><path d="M -80 254 C 48 254 176 512 304 512 C 432 512 560 770 688 770 C 816 770 944 512 1090 512" stroke="#1e1b4b" stroke-opacity="0.85" stroke-width="150"/><path d="M -80 254 C 48 254 176 512 304 512 C 432 512 560 770 688 770 C 816 770 944 512 1090 512" stroke="#f8fafc" stroke-width="98"/></g></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+<symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></symbol>
+<symbol id="i-qr" viewBox="0 0 24 24"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M16 12h1"/><path d="M12 21v-1"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+<symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m8 7 4-4 4 4"/><path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+<symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+<symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+<symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></symbol>
+<symbol id="i-wave" viewBox="0 0 24 24"><path d="M2 10v4"/><path d="M6 6v12"/><path d="M10 3v18"/><path d="M14 8v8"/><path d="M18 5v14"/><path d="M22 10v4"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+<symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 12v6"/><path d="M9 15h6"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="i-laptop" viewBox="0 0 24 24"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><rect width="14" height="20" x="5" y="2" rx="2.5"/><path d="M12 18h.01"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+<symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+<symbol id="i-restore" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><path d="M2.6 17.4A2 2 0 0 0 2 18.8V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.2a2 2 0 0 0 1.4-.6l.8-.8a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".6"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></symbol>
+<symbol id="i-list-check" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+<symbol id="i-wifi" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.86a10 10 0 0 1 14 0"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/></symbol>
+<symbol id="i-battery" viewBox="0 0 24 24"><rect width="17" height="10" x="2" y="7" rx="2.5"/><path d="M22 11v2"/><rect x="4" y="9" width="11" height="6" rx="1.2" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 20v-3"/><path d="M9.5 20v-7"/><path d="M15 20V9"/><path d="M20.5 20V4"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+</defs></svg>
+
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="#top"><svg class="i" style="width:27px;height:27px"><use href="#i-logo"/></svg><span class="word">Polyphony</span><small>复调</small></a>
+    <nav class="nav">
+      <a href="#collab">实时协同</a>
+      <a href="#offline">离线可写</a>
+      <a href="#voice">语音</a>
+      <a href="#more">更多</a>
+      <a href="#host">自托管</a>
+    </nav>
+    <div class="cta">
+      <a class="btn btn-ghost btn-sm" href="https://github.com/kkaaddff/polyphony" target="_blank" rel="noopener"><svg class="i"><use href="#i-code"/></svg>GitHub</a>
+      <a class="btn btn-primary btn-sm" href="#host"><svg class="i"><use href="#i-server"/></svg>立即部署</a>
+    </div>
+  </div>
+</header>
+
+<main class="main" id="top">
+  <!-- ===== Hero ===== -->
+  <section class="hero">
+    <div>
+      <span class="kicker">实时协同文档 · 开源 · 可自托管</span>
+      <h1 class="display">Many voices.<br><em class="sky">One score.</em></h1>
+      <p class="lead">多个声部，一份总谱。Polyphony 让一群人像在同一张稿纸上写字一样协作——<b>打开即写、断网不慌</b>。不用来回发文件，不用等谁保存，每个人的光标都在纸上。</p>
+      <div class="actions">
+        <a class="btn btn-primary btn-lg" href="#host"><svg class="i"><use href="#i-server"/></svg>部署我自己的</a>
+        <a class="btn btn-secondary btn-lg" href="#collab"><svg class="i"><use href="#i-users"/></svg>看看怎么用</a>
+      </div>
+      <p class="note">网页 · Windows · macOS · Linux · Android，一个账号全端同步。</p>
+    </div>
+    <div class="hero-art" aria-hidden="true">
+      <div class="hero-card hc1">
+        <div class="hc-row"><span class="stack"><span class="avatar sm" style="background:var(--v2)">林</span><span class="avatar sm" style="background:var(--v7)">A</span></span><span class="hc-title">产品路线图 Q4</span></div>
+        <div class="hc-meta"><span class="voice"><i></i><i></i><i></i></span> 2 人正在编辑</div>
+        <div class="hc-line w80"></div><div class="hc-line w60"></div><div class="hc-line w45"></div>
+      </div>
+      <div class="hero-card hc2">
+        <div class="hc-row"><span class="avatar sm" style="background:var(--v6)">Q</span><span class="hc-title">语音便签</span><span class="tag tag-accent" style="margin-left:auto">新</span></div>
+        <div class="hc-meta">周五前把 README 截图换成新界面…</div>
+        <div class="hc-line w80"></div><div class="hc-line w60"></div>
+      </div>
+      <svg class="braid" data-braid viewBox="0 0 600 200" preserveAspectRatio="none">
+        <g><path class="wave halo" data-wave="0"/><path class="wave halo" data-wave="2.094"/><path class="wave halo" data-wave="4.189"/>
+        <path class="wave w1" data-wave="0"/><path class="wave w2" data-wave="2.094"/><path class="wave w3" data-wave="4.189"/></g>
+      </svg>
+    </div>
+  </section>
+
+  <div class="pillars">
+    <div class="pillar"><span class="ic"><svg class="i"><use href="#i-file"/></svg></span><b>打开即写</b><span>扫码或点链接就进文档，富文本、图片、待办清单，像写笔记一样自然。</span></div>
+    <div class="pillar"><span class="ic"><svg class="i"><use href="#i-wifi"/></svg></span><b>断网不慌</b><span>地铁、飞机、地下室照样写，恢复联网自动合并，一个字都不丢。</span></div>
+    <div class="pillar"><span class="ic"><svg class="i"><use href="#i-server"/></svg></span><b>数据是你的</b><span>一条命令部署到自己的服务器，文档明文存在你的硬盘上。</span></div>
+  </div>
+
+  <!-- ===== 实时协同 ===== -->
+  <section class="sec" id="collab">
+    <div class="feature">
+      <div class="f-copy">
+        <span class="kicker"><span class="fic"><svg class="i"><use href="#i-users"/></svg></span>实时协同</span>
+        <h2>一群人，<em class="serif-i">同一张稿纸</em></h2>
+        <p>把链接或二维码发给伙伴，大家同时写同一篇文档。谁在写哪一行，光标和名字就实时浮在那里——不用刷新、不用「你改完发我」。</p>
+        <ul class="f-points">
+          <li><svg class="i"><use href="#i-check"/></svg>每个人的光标带名字与专属颜色，一眼看清谁在写</li>
+          <li><svg class="i"><use href="#i-check"/></svg>在线人数、正在输入实时可见，协作有「在场感」</li>
+          <li><svg class="i"><use href="#i-check"/></svg>冲突自动合并，基于 CRDT，不会互相覆盖</li>
+        </ul>
+      </div>
+      <div class="f-demo">
+        <div class="stage">
+          <span class="stage-cap">实时演示 · 两人同写</span>
+          <div class="sheet-demo">
+            <div class="sd-head">
+              <span class="sd-title">产品路线图 Q4</span>
+              <span class="stack"><span class="avatar sm" style="background:var(--v6)">Q</span><span class="avatar sm" style="background:var(--v2)">林</span><span class="avatar sm" style="background:var(--v7)">A</span></span>
+              <span class="sd-live"><span class="voice"><i></i><i></i><i></i></span>3 人在线</span>
+            </div>
+            <div class="sd-body">
+              <p><span id="cb-a"></span><span class="caret" style="background:var(--ink)"></span></p>
+              <h3>目标</h3>
+              <p><span class="peer-flag"><span class="nm" style="background:var(--v2)">林晚</span><span id="cb-b"></span><span class="caret" style="background:var(--v2)"></span></span></p>
+              <p style="color:var(--ink-3)"><span class="peer-flag"><span class="nm" style="background:var(--v7)">Alex</span><span id="cb-c"></span><span class="caret" style="background:var(--v7)"></span></span></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 离线 ===== -->
+  <section class="sec" id="offline">
+    <div class="feature rev">
+      <div class="f-copy">
+        <span class="kicker"><span class="fic"><svg class="i"><use href="#i-wifi"/></svg></span>离线优先</span>
+        <h2>没网，<em class="serif-i">照样写</em></h2>
+        <p>文档先存在你自己的设备上。断网时顶部亮起一枚小小的「离线」标签，你继续写；一旦联网，改动自动同步给所有人——不打断、不丢字。</p>
+        <ul class="f-points">
+          <li><svg class="i"><use href="#i-check"/></svg>离线秒开文档，不必等服务器响应</li>
+          <li><svg class="i"><use href="#i-check"/></svg>恢复连接自动合并，多端改动收敛为一份</li>
+          <li><svg class="i"><use href="#i-check"/></svg>明确的离线状态，不是笼统的「加载失败」</li>
+        </ul>
+      </div>
+      <div class="f-demo">
+        <div class="stage">
+          <span class="stage-cap">实时演示 · 断网 → 续写 → 同步</span>
+          <div class="phone">
+            <span class="cam"></span>
+            <div class="screen">
+              <div class="m-status"><span>9:41</span><span class="icons"><svg class="i"><use href="#i-signal"/></svg><svg class="i" id="off-wifi"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-battery"/></svg></span></div>
+              <div class="m-bar"><span class="m-ib"><svg class="i"><use href="#i-left"/></svg></span><span class="grow"></span><span class="m-ib"><svg class="i"><use href="#i-share"/></svg></span><span class="m-ib"><svg class="i"><use href="#i-more"/></svg></span></div>
+              <div class="toast-mini" id="off-toast"><svg class="i"><use href="#i-check"/></svg>已同步到服务器</div>
+              <div class="m-scroll">
+                <div class="m-doc-title">旅行清单：京都五日</div>
+                <div class="m-doc-meta"><span class="num" id="off-count">0 字</span><span class="bar"></span><span class="status-pill" id="off-status"><span class="dot"></span>已连接</span></div>
+                <div class="m-body"><p><span id="off-text"></span><span class="caret" style="background:var(--accent)"></span></p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 扫码加入 ===== -->
+  <section class="sec" id="scan">
+    <div class="feature">
+      <div class="f-copy">
+        <span class="kicker"><span class="fic"><svg class="i"><use href="#i-qr"/></svg></span>扫码即加入</span>
+        <h2>分享一个码，<em class="serif-i">谁来都能写</em></h2>
+        <p>每篇文档都有一个二维码和链接。对方用<b>任意手机相机</b>扫一下就能进文档开始写——不装 App 也行，网页版兜底。装了 App 体验更顺。</p>
+        <ul class="f-points">
+          <li><svg class="i"><use href="#i-check"/></svg>二维码 = 网页链接，系统相机即可扫</li>
+          <li><svg class="i"><use href="#i-check"/></svg>App 内扫码直连，自动识别服务器地址</li>
+          <li><svg class="i"><use href="#i-check"/></svg>没有摄像头？粘贴链接或 8 位文档码同样进</li>
+        </ul>
+      </div>
+      <div class="f-demo">
+        <div class="stage">
+          <span class="stage-cap">实时演示 · 扫码进文档</span>
+          <div class="scan-wrap">
+            <div class="qr-card">
+              <div class="qr-box"><span data-qr></span><span class="scan-line"></span></div>
+              <div class="cap">扫码进文档</div>
+              <div class="sub">手机相机或 App 扫一扫</div>
+            </div>
+            <div class="phone scan-phone" id="scan-phone" style="width:230px;height:470px;border-radius:36px">
+              <span class="cam"></span>
+              <div class="screen">
+                <div class="join-state scanning">
+                  <span class="big-ic" style="position:relative"><svg class="i"><use href="#i-scan"/></svg><span class="pulse-ring"></span></span>
+                  <h4>正在识别…</h4>
+                  <p>将二维码对准取景框</p>
+                </div>
+                <div class="join-state joined">
+                  <span class="big-ic"><svg class="i"><use href="#i-check"/></svg></span>
+                  <h4>已进入文档</h4>
+                  <p>产品路线图 Q4<br>现在可以和大家一起写了</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 语音便签 + 手势 ===== -->
+  <section class="sec" id="voice">
+    <div class="feature rev">
+      <div class="f-copy">
+        <span class="kicker"><span class="fic"><svg class="i"><use href="#i-wave"/></svg></span>语音便签</span>
+        <h2>手机上说一句，<em class="serif-i">电脑上就有一条</em></h2>
+        <p>在手机上用语音输入说一句话，发送后立刻变成所有设备上的一条便签。整理时：<b>往右滑</b>把便签转成一篇正式文档，<b>往左滑</b>删除。灵感不再散落。</p>
+        <ul class="f-points">
+          <li><svg class="i"><use href="#i-right"/></svg><span><b>右滑 → 转成文档</b>：以便签为正文新建一篇，便签仍保留</span></li>
+          <li><svg class="i"><use href="#i-left"/></svg><span><b>左滑 → 删除</b>：确认后所有设备同步移除</span></li>
+          <li><svg class="i"><use href="#i-check"/></svg>可设保留天数，过期自动清理；也能手写追加</li>
+        </ul>
+      </div>
+      <div class="f-demo">
+        <div class="stage">
+          <span class="stage-cap">实时演示 · 右滑转文档 / 左滑删除</span>
+          <div class="phone">
+            <span class="cam"></span>
+            <div class="screen">
+              <div class="m-status"><span>9:41</span><span class="icons"><svg class="i"><use href="#i-signal"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-battery"/></svg></span></div>
+              <div class="m-bar"><span class="m-ib"><svg class="i"><use href="#i-left"/></svg></span><span class="grow"></span><span style="font-size:16px;font-weight:680">语音便签</span><span class="grow"></span><span class="m-ib"><svg class="i"><use href="#i-search"/></svg></span></div>
+              <div class="m-scroll">
+                <div class="m-notes" id="notes-demo">
+                  <div class="note-wrap" id="nw-1">
+                    <div class="note-bg doc"><svg class="i"><use href="#i-file-plus"/></svg>转为文档</div>
+                    <div class="note-bg del"><svg class="i"><use href="#i-trash"/></svg>删除</div>
+                    <div class="note" id="note-1"><div class="meta"><svg class="i"><use href="#i-wave"/></svg><span class="dev">Qicheng</span>· App · macOS</div><p>周五前把 README 的截图换成新界面。</p></div>
+                  </div>
+                  <div class="note-wrap" id="nw-2">
+                    <div class="note-bg doc"><svg class="i"><use href="#i-file-plus"/></svg>转为文档</div>
+                    <div class="note-bg del"><svg class="i"><use href="#i-trash"/></svg>删除</div>
+                    <div class="note" id="note-2"><div class="meta"><svg class="i"><use href="#i-wave"/></svg><span class="dev">Alex</span>· App · Android</div><p>记得给回收站加一个「全部恢复」。</p></div>
+                  </div>
+                  <div class="note-wrap">
+                    <div class="note"><div class="meta"><span class="dev">林晚</span>· Chrome · Windows</div><p>Many voices, one score. 标题就用这句。</p></div>
+                  </div>
+                </div>
+              </div>
+              <div class="swipe-hint"><span class="l"><svg class="i"><use href="#i-left"/></svg>左滑删除</span><span class="r">右滑转文档<svg class="i"><use href="#i-right"/></svg></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 语音输入到电脑 ===== -->
+  <section class="sec" id="voice-input">
+    <div class="feature">
+      <div class="f-copy">
+        <span class="kicker"><span class="fic"><svg class="i"><use href="#i-mic"/></svg></span>语音输入到电脑 · 实验</span>
+        <h2>对着手机说，<em class="serif-i">字落在电脑里</em></h2>
+        <p>打开电脑上的接收开关，手机就成了电脑的无线麦克风：用输入法的语音键说话，文字<b>实时出现在电脑当前的输入框</b>里——聊天、搜索、写邮件都行。</p>
+        <ul class="f-points">
+          <li><svg class="i"><use href="#i-check"/></svg>同一账号设备间直连，文字不落库、不记日志</li>
+          <li><svg class="i"><use href="#i-check"/></svg>注入其他应用目前支持 Linux + Fcitx5（源码安装插件）</li>
+          <li><svg class="i"><use href="#i-check"/></svg>macOS / Windows 上可先在设置页实时预览</li>
+        </ul>
+      </div>
+      <div class="f-demo">
+        <div class="stage">
+          <span class="stage-cap">实时演示 · 手机说 → 电脑输入框</span>
+          <div class="voice-wrap">
+            <div class="phone voice-phone">
+              <span class="cam"></span>
+              <div class="screen">
+                <div class="m-status"><span>9:41</span><span class="icons"><svg class="i"><use href="#i-signal"/></svg><svg class="i"><use href="#i-wifi"/></svg><svg class="i"><use href="#i-battery"/></svg></span></div>
+                <div class="vp-body">
+                  <div class="vp-wave"><i></i><i></i><i></i><i></i><i></i></div>
+                  <span class="mic-btn"><svg class="i"><use href="#i-mic"/></svg><span class="pulse-ring"></span></span>
+                  <div class="vp-text" id="vi-phone"></div>
+                  <div class="vp-hint">正在输入到电脑…</div>
+                </div>
+              </div>
+            </div>
+            <span class="flow-arrow"><svg class="i"><use href="#i-right"/></svg></span>
+            <div class="pc-window">
+              <div class="pc-bar"><span class="d" style="background:#f1c8ca"></span><span class="d" style="background:#eeddab"></span><span class="d" style="background:#bfe3cf"></span><span class="title">浏览器 · 搜索</span></div>
+              <div class="pc-body">
+                <div class="pc-label">搜索框</div>
+                <div class="pc-field"><span id="vi-pc"></span><span class="caret"></span></div>
+                <div class="pc-send"><span class="btn btn-primary btn-sm" id="vi-send">发送</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 更多特性 ===== -->
+  <section class="sec" id="more">
+    <div class="sec-head">
+      <span class="kicker">还有这些</span>
+      <h2 class="h1">把协同体验做到<em>「打开即写、断网不慌」</em></h2>
+      <p class="lead">细节都按「日常真的会用」来打磨。</p>
+    </div>
+    <div class="grid">
+      <div class="gcard"><span class="ic"><svg class="i"><use href="#i-phone"/></svg></span><b>一个账号，全端同步</b><span>网页、桌面、手机看到同一份文档与便签；换设备扫码配对即可登录。</span></div>
+      <div class="gcard"><span class="ic"><svg class="i"><use href="#i-restore"/></svg></span><b>回收站 30 天</b><span>误删不慌：删除进回收站保留 30 天，随时恢复；约一年无活动自动归档。</span></div>
+      <div class="gcard"><span class="ic"><svg class="i"><use href="#i-key"/></svg></span><b>账号安全</b><span>每台设备独立凭据，恢复密钥一次性展示；新设备登录需已登录设备批准。</span></div>
+      <div class="gcard"><span class="ic"><svg class="i"><use href="#i-image"/></svg></span><b>图片与富文本</b><span>粘贴图片自动压缩去隐私信息；标题、列表、待办、引用、表格、代码块。</span></div>
+      <div class="gcard"><span class="ic"><svg class="i"><use href="#i-list-check"/></svg></span><b>Markdown 快捷键</b><span>输入 # 、- 、&gt; 即变标题、列表、引用，写作不打断思路。</span></div>
+      <div class="gcard"><span class="ic"><svg class="i"><use href="#i-download"/></svg></span><b>一键导出</b><span>整篇文档连同图片打包成 zip，随时带走，不被平台绑架。</span></div>
+    </div>
+  </section>
+
+  <!-- ===== 自托管 ===== -->
+  <section class="sec" id="host">
+    <div class="host">
+      <div>
+        <span class="kicker">自托管 · 数据主权</span>
+        <h2>你的文档，<br>放在你的服务器上</h2>
+        <p>一个 Docker 容器 = 网页 + 实时协同 + 图片存储，单端口对外。文档明文存在你自己的 SQLite 里，不经过任何第三方云。</p>
+        <a class="btn btn-secondary btn-lg" href="https://github.com/kkaaddff/polyphony" target="_blank" rel="noopener"><svg class="i"><use href="#i-download"/></svg>获取部署文件</a>
+        <ul class="host-list">
+          <li><svg class="i"><use href="#i-check"/></svg>网页 / 桌面 / 手机直连你的地址，扫码带参即配好</li>
+          <li><svg class="i"><use href="#i-check"/></svg>具名卷保存数据，换机迁移零成本</li>
+          <li><svg class="i"><use href="#i-check"/></svg>内网即用；公网自行加 TLS 反代</li>
+        </ul>
+      </div>
+      <div class="code"><span class="c"># 克隆仓库后，一条命令起服务</span>
+<span class="k">docker</span> compose up -d
+
+<span class="c"># 浏览器打开 http://你的IP:9091</span>
+<span class="c"># 创建账号 → 保存恢复密钥 → 开始写</span>
+<span class="k">curl</span> http://localhost:9091/health
+<span class="s">{"status":"ok"}</span></div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="footer-in">
+    <a class="brand" href="#top"><svg class="i" style="width:24px;height:24px"><use href="#i-logo"/></svg><span class="word" style="font-size:18px">Polyphony</span></a>
+    <span class="tagline">Many voices. One score.</span>
+    <div class="links">
+      <a href="https://github.com/kkaaddff/polyphony" target="_blank" rel="noopener">GitHub</a>
+      <a href="#collab">功能</a>
+      <a href="#host">自托管</a>
+    </div>
+    <span class="fine">复调 · 开源实时协同文档 · 本页面为产品介绍，动画为示意演示。© 2026 Polyphony</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var sleep = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+
+  /* ---- 品牌辫:三条相位互差 120° 的正弦带,缓慢流动 ---- */
+  var braid = document.querySelector("[data-braid]");
+  function braidPath(phase, t){
+    var d = "";
+    for (var x = 0; x <= 600; x += 6){
+      var y = 100 + 46 * Math.sin((x / 150) * Math.PI * 2 + phase + t);
+      d += (x ? " L" : "M") + x + " " + y.toFixed(1);
+    }
+    return d;
+  }
+  if (braid){
+    var paths = braid.querySelectorAll("[data-wave]");
+    if (reduce){
+      paths.forEach(function(p){ p.setAttribute("d", braidPath(parseFloat(p.dataset.wave), 0)); });
+    } else {
+      var t0 = performance.now();
+      (function frame(now){
+        var t = (now - t0) / 2600;
+        paths.forEach(function(p){ p.setAttribute("d", braidPath(parseFloat(p.dataset.wave), t)); });
+        requestAnimationFrame(frame);
+      })(t0);
+    }
+  }
+
+  /* ---- 伪二维码(示意) ---- */
+  document.querySelectorAll("[data-qr]").forEach(function(el){
+    var seed = 7, rnd = function(){ seed = (Math.imul(seed,1103515245)+12345)&0x7fffffff; return seed/0x7fffffff; };
+    var finder = function(x,y){ return '<rect x="'+x+'" y="'+y+'" width="7" height="7"/><rect x="'+(x+1)+'" y="'+(y+1)+'" width="5" height="5" fill="#fff"/><rect x="'+(x+2)+'" y="'+(y+2)+'" width="3" height="3" fill="#1b1c26"/>'; };
+    var inF = function(x,y){ return (x<8&&y<8)||(x>16&&y<8)||(x<8&&y>16); };
+    var mods = "";
+    for (var y=0;y<25;y++) for (var x=0;x<25;x++) if(!inF(x,y)&&rnd()<0.44) mods += '<rect x="'+x+'" y="'+y+'" width="1" height="1"/>';
+    el.innerHTML = '<svg viewBox="0 0 25 25" shape-rendering="crispEdges" fill="#1b1c26">'+finder(0,0)+finder(18,0)+finder(0,18)+mods+'</svg>';
+  });
+
+  /* ---- 逐字打字 ---- */
+  function typeInto(el, text, speed){
+    return new Promise(function(resolve){
+      if (reduce){ el.textContent = text; resolve(); return; }
+      var i = 0;
+      (function step(){
+        el.textContent = text.slice(0, ++i);
+        if (i < text.length) setTimeout(step, speed + Math.random()*40);
+        else resolve();
+      })();
+    });
+  }
+
+  /* ---- 演示 1:三人同写 ---- */
+  var cbA = document.getElementById("cb-a"), cbB = document.getElementById("cb-b"), cbC = document.getElementById("cb-c");
+  if (cbA){
+    var TA = "把协同体验做到「打开即写、断网不慌」。";
+    var TB = "移动端交互重做，工具栏贴着键盘走。";
+    var TC = "语音输入到电脑进入实验阶段。";
+    (async function loop(){
+      for(;;){
+        cbA.textContent=""; cbB.textContent=""; cbC.textContent="";
+        await sleep(600);
+        await Promise.all([ typeInto(cbA,TA,55), typeInto(cbB,TB,70), typeInto(cbC,TC,85) ]);
+        await sleep(3200);
+      }
+    })();
+  }
+
+  /* ---- 演示 2:离线 → 续写 → 同步 ---- */
+  var offText=document.getElementById("off-text"), offStatus=document.getElementById("off-status"),
+      offToast=document.getElementById("off-toast"), offCount=document.getElementById("off-count"),
+      offWifi=document.getElementById("off-wifi");
+  if (offText){
+    var setOnline=function(on){
+      offStatus.innerHTML = on ? '<span class="dot"></span>已连接' : '<span class="off-badge"><span class="dot red"></span>离线 · 改动存本机</span>';
+      offWifi.style.opacity = on ? "1" : ".3";
+    };
+    var T1="第一天：清水寺、二年坂三年坂，傍晚去鸭川边散步。", T2="第二天：岚山竹林、天龙寺，记得提前订小火车。";
+    (async function loop(){
+      for(;;){
+        offText.textContent=""; offCount.textContent="0 字"; setOnline(true); offToast.classList.remove("show");
+        await sleep(700);
+        await typeInto(offText, T1, 45); offCount.textContent=T1.length+" 字";
+        await sleep(700);
+        setOnline(false);                       // 断网
+        await sleep(600);
+        await typeInto(offText, T1+T2, 45); offCount.textContent=(T1.length+T2.length)+" 字";  // 离线续写
+        await sleep(900);
+        setOnline(true); offToast.classList.add("show");   // 恢复 + 同步
+        await sleep(2600);
+        offToast.classList.remove("show");
+        await sleep(700);
+      }
+    })();
+  }
+
+  /* ---- 演示 3:扫码 ---- */
+  var scanPhone=document.getElementById("scan-phone");
+  if (scanPhone){
+    (async function loop(){
+      for(;;){
+        scanPhone.classList.remove("is-joined");
+        await sleep(2600);
+        scanPhone.classList.add("is-joined");
+        await sleep(2600);
+      }
+    })();
+  }
+
+  /* ---- 演示 4:便签右滑转文档 / 左滑删除 ---- */
+  var n1=document.getElementById("note-1"), n2=document.getElementById("note-2"),
+      w1=document.getElementById("nw-1"), w2=document.getElementById("nw-2");
+  function bg(wrap, kind, on){
+    var el = wrap.querySelector(kind==="doc"?".note-bg.doc":".note-bg.del");
+    el.style.opacity = on ? "1" : "0";
+  }
+  function collapse(wrap){
+    wrap.style.height = wrap.offsetHeight + "px";
+    wrap.style.overflow = "hidden";
+    void wrap.offsetHeight;            // 强制回流,让 height 过渡生效
+    wrap.style.height = "0";
+  }
+  if (n1 && n2){
+    (async function loop(){
+      for(;;){
+        // 复位
+        n1.classList.remove("gone"); n2.classList.remove("gone");
+        n1.style.transform=""; n2.style.transform=""; bg(w1,"doc",false); bg(w2,"del",false);
+        w1.style.height=""; w2.style.height=""; w1.style.overflow=""; w2.style.overflow="";
+        await sleep(1500);
+        // 右滑 → 转文档
+        bg(w1,"doc",true); n1.style.transform="translateX(150px)";
+        await sleep(1000);
+        n1.classList.add("gone"); await sleep(360); collapse(w1);
+        await sleep(1300);
+        // 左滑 → 删除
+        bg(w2,"del",true); n2.style.transform="translateX(-150px)";
+        await sleep(1000);
+        n2.classList.add("gone"); await sleep(360); collapse(w2);
+        await sleep(1700);
+      }
+    })();
+  }
+
+  /* ---- 演示 5:语音输入到电脑 ---- */
+  var viPhone=document.getElementById("vi-phone"), viPc=document.getElementById("vi-pc"), viSend=document.getElementById("vi-send");
+  if (viPhone){
+    var VT="帮我把这段话打到搜索框里：京都五日自由行攻略";
+    (async function loop(){
+      for(;;){
+        viPhone.textContent=""; viPc.textContent=""; viSend.style.transform="";
+        await sleep(700);
+        if (reduce){ viPhone.textContent=VT; viPc.textContent=VT; }
+        else {
+          var i=0;
+          await new Promise(function(res){
+            (function step(){
+              viPhone.textContent=VT.slice(0,++i); viPc.textContent=VT.slice(0,i);
+              if(i<VT.length) setTimeout(step,70); else res();
+            })();
+          });
+        }
+        await sleep(600);
+        viSend.style.transform="scale(.92)"; await sleep(160); viSend.style.transform="";
+        await sleep(2600);
+      }
+    })();
+  }
+})();
+</script>
+</body>
+</html>
