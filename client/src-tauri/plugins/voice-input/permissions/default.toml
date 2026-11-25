@@ -1,0 +1,4 @@
+"$schema" = "schemas/schema.json"
+[default]
+description = "打开原生语音输入页"
+permissions = ["allow-open"]

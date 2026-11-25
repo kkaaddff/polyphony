@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile-scan",
+  "description": "移动端:扫码插件 + 返回键监听(Android 侧滑返回;根页退后台走自有命令 move_task_to_back)",
+  "platforms": [
+    "android",
+    "iOS"
+  ],
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "barcode-scanner:allow-scan",
+    "barcode-scanner:allow-cancel",
+    "barcode-scanner:allow-check-permissions",
+    "barcode-scanner:allow-request-permissions",
+    "core:app:allow-register-listener",
+    "core:app:allow-remove-listener"
+  ]
+}

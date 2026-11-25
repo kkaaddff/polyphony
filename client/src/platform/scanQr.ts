@@ -1,0 +1,91 @@
+// 扫码能力封装：Web/桌面 = jsQR + getUserMedia；移动端 App(Android/iOS) = plugin-barcode-scanner。
+// 注意：getUserMedia 仅安全上下文可用（https/localhost/App WebView）——
+// 直连 http://IP 的手机浏览器扫不了码属预期，该场景由系统相机扫码打开 Web 版兜底。
+import jsQR from "jsqr";
+import { isMobileTauri } from "./index";
+
+/** 移动端 App（Android/iOS）：原生扫码插件可用时优先走插件（插件按 target 门控编入两端）。 */
+export function hasNativeScanner(): boolean {
+  return isMobileTauri();
+}
+
+/** 原生全屏扫码（插件，仅移动端编入）；取消返回 null，识别返回内容字符串。 */
+export async function nativeScanQr(): Promise<string | null> {
+  const { scan, Format, checkPermissions, requestPermissions } = await import(
+    "@tauri-apps/plugin-barcode-scanner"
+  );
+  // Android 6.0+ CAMERA 是运行时权限:未授权时 scan() 直接 reject(普通对象非 Error,
+  // 实踩显示成 [object Object])——必须先请求权限。v2.5 API:PermissionState 字符串。
+  let perm = await checkPermissions();
+  if (perm !== "granted") {
+    perm = await requestPermissions();
+  }
+  if (perm !== "granted") {
+    throw new Error("ERR_SCAN_PERMISSION");
+  }
+  // windowed:true —— 预览铺在 WebView 之下、WebView 透明,我们自己的取消按钮/取景框
+  // 能画在相机画面之上(windowed:false 时原生预览盖住整个 WebView,用户无任何退出入口,实踩)。
+  // 页面透明由 ScanModal 在 <html> 上挂 native-scanning 类完成(见 index.css)。
+  const result = await scan({ formats: [Format.QRCode], windowed: true });
+  return result?.content ?? null;
+}
+
+/** 取消进行中的原生扫码(卸载弹层/返回键时调用;插件会 reject 掉挂起的 scan)。 */
+export async function nativeCancelScan(): Promise<void> {
+  try {
+    const { cancel } = await import("@tauri-apps/plugin-barcode-scanner");
+    await cancel();
+  } catch {
+    /* 未在扫码中:忽略 */
+  }
+}
+
+/** 任意 rejection → 人类可读文案(插件 reject 的是普通对象,直接 String() 会变 [object Object])。 */
+export function rejectionMessage(e: unknown): string {
+  if (typeof e === "string" && e) return e;
+  const o = e as { message?: unknown; msg?: unknown } | null;
+  if (o && typeof o === "object") {
+    const m = o.message ?? o.msg;
+    if (typeof m === "string" && m) return m;
+  }
+  try {
+    return JSON.stringify(e) || String(e);
+  } catch {
+    return String(e);
+  }
+}
+
+export async function getCameraStream(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    // 稳定错误码,由 ScanModal 映射为本地化文案(scanModal.noCamera)
+    throw new Error("ERR_NO_CAMERA");
+  }
+  return navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: "environment" } },
+    audio: false,
+  });
+}
+
+export function stopStream(stream: MediaStream | null): void {
+  stream?.getTracks().forEach((t) => t.stop());
+}
+
+/** 单帧解码：从 video 抓帧（降采样到 ~480px 宽）交给 jsQR；未识别返回 null。 */
+export function decodeVideoFrame(
+  video: HTMLVideoElement,
+  canvas: HTMLCanvasElement
+): string | null {
+  if (video.readyState !== video.HAVE_ENOUGH_DATA || !video.videoWidth) {
+    return null;
+  }
+  const w = 480;
+  const h = Math.max(1, Math.round((video.videoHeight / video.videoWidth) * w));
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(video, 0, 0, w, h);
+  const image = ctx.getImageData(0, 0, w, h);
+  const code = jsQR(image.data, w, h, { inversionAttempts: "dontInvert" });
+  return code?.data ?? null;
+}

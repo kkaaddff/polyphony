@@ -1,0 +1,30 @@
+{
+  "name": "polyphony",
+  "version": "4.4.1",
+  "private": true,
+  "description": "复调 Polyphony —— Many voices. One score. 实时协同文档编辑（Yjs CRDT）",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kkaaddff/polyphony.git"
+  },
+  "homepage": "https://github.com/kkaaddff/polyphony#readme",
+  "bugs": "https://github.com/kkaaddff/polyphony/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "lint": "npm --prefix client run lint",
+    "server": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
+    "dev:lan": "bash scripts/dev-lan.sh",
+    "android:build": "bash scripts/android-local.sh",
+    "android:build:install": "bash scripts/android-local.sh --install",
+    "ios:build": "bash scripts/ios-local.sh",
+    "ios:build:install": "bash scripts/ios-local.sh --install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

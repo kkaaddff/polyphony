@@ -1,0 +1,11 @@
+[Addon]
+Name=Polyphony Voice Input
+Name[zh_CN]=Polyphony 远程语音输入
+Comment=Types text dictated on your phone into the focused input field
+Comment[zh_CN]=把手机上语音输入的文字实时输入到当前焦点输入框
+Category=Module
+Version=@PROJECT_VERSION@
+Library=libpolyphonyvoice
+Type=SharedLibrary
+OnDemand=False
+Configurable=False

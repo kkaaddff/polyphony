@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application>
+        <!-- 原生语音输入页:不导出;adjustResize 由页面自己按 IME inset 垫底(edge-to-edge) -->
+        <activity
+            android:name=".VoiceInputActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
+    </application>
+</manifest>

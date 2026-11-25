@@ -1,0 +1,13 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "bundle": {
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/lib/x86_64-linux-gnu/fcitx5/libpolyphonyvoice.so": "fcitx5-addon/libpolyphonyvoice.so",
+          "/usr/share/fcitx5/addon/polyphonyvoice.conf": "fcitx5-addon/polyphonyvoice.conf"
+        }
+      }
+    }
+  }
+}

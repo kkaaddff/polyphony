@@ -1,0 +1,49 @@
+[package]
+name = "polyphony"
+version = "4.4.1"
+description = "复调 Polyphony 桌面端"
+edition = "2021"
+
+# debug 构建(APK 侧载场景)剥离 DWARF 调试符号:libpolyphony_lib.so 117MB → ~20MB,
+# 整包 126MB → ~30MB(ADR #6 的 debug 直装路线保留,体积代价消除)
+[profile.dev]
+strip = "debuginfo"
+
+[lib]
+name = "polyphony_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 桌面单实例:窗口隐藏到托盘后再次从应用菜单启动 = 唤出已有窗口(否则第二个进程抢不到语音输入 Socket)
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+# 开机自启(Linux ~/.config/autostart、macOS LaunchAgent、Windows 注册表 Run);带 --autostart 启动时只驻留托盘
+tauri-plugin-autostart = "2"
+
+# 扫码插件仅移动端编入（桌面无原生扫码，走 jsQR+摄像头网页方案）
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-barcode-scanner = "2"
+
+# 根页返回 = moveTaskToBack(经 wry 的 JniHandle 调 Activity 方法;版本与 wry 内部一致)
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+# 原生语音输入页(本仓库内的 Tauri 插件:Kotlin Activity + OkHttp WS)
+tauri-plugin-voice-input = { path = "plugins/voice-input" }
+
+# iOS:WKWebView 的 JS alert/confirm 原生弹窗(wry 的 WKUIDelegate 未实现,见 src/ios_js_dialogs.rs)。
+# 与 wry 0.57 锁定的同一套绑定(objc2 0.6 / objc2-* 0.3.2 / block2 0.6),只开用到的 feature。
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = { version = "0.6", features = ["exception", "disable-encoding-assertions"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSArray", "NSLocale"] }
+objc2-ui-kit = { version = "0.3.2", default-features = false, features = ["std", "block2", "objc2-core-foundation", "UIResponder", "UIView", "UIWindow", "UIViewController", "UIAlertController"] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = ["std", "block2", "objc2-core-foundation", "WKUIDelegate", "WKFrameInfo"] }
+block2 = "0.6"
+# 键盘弹起时钉住 webview 滚动视图(src/ios_scroll_pin.rs)要用 CGPoint
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes"] }

@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "android-voice-input",
+  "description": "Android:打开原生语音输入页(远程语音输入发送端)",
+  "platforms": ["android"],
+  "windows": ["main"],
+  "permissions": ["voice-input:allow-open"]
+}

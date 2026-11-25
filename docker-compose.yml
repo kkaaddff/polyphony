@@ -1,0 +1,25 @@
+# 复调 Polyphony —— all-in-one（前端静态 + 协同 WS 同端口）
+# 宿主机 9091 ← 经反向代理映射为 HTTPS 域名，
+# 证书由宿主反代处理，容器内只跑 HTTP。
+services:
+  polyphony:
+    build: .
+    image: polyphony:latest
+    container_name: polyphony
+    restart: unless-stopped
+    # 给 WS 客户端留优雅断开窗口（默认 10s 内 kill 会硬断）
+    stop_grace_period: 15s
+    ports:
+      - "9091:9091"
+    volumes:
+      - polyphony-uploads:/app/server/uploads
+      - polyphony-data:/app/server/data
+    mem_limit: 512m
+
+volumes:
+  polyphony-uploads:
+    # 固定卷名:不带 compose 项目前缀(CI 每次在 /tmp/polyphony-src 下 up,目录名不稳定)
+    name: polyphony-uploads
+  polyphony-data:
+    # v4 持久化:SQLite(polyphony.db)账号/文档快照/成员/附件登记
+    name: polyphony-data

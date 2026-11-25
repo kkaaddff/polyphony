@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Android 13+ 主题图标单色层:launcher 只取 alpha 重新着色,全部实色白 -->
+  <g transform="translate(512 512) scale(0.46) translate(-512 -512)" fill="none" stroke="#ffffff" stroke-linecap="round">
+    <path d="M -80 512 C 48 342 176 342 304 512 C 432 682 560 682 688 512 C 816 342 944 342 1090 512" stroke-width="98"/>
+    <path d="M -80 682 C 48 682 176 512 304 512 C 432 512 560 342 688 342 C 816 342 944 512 1090 512" stroke-width="98"/>
+    <path d="M -80 342 C 48 342 176 512 304 512 C 432 512 560 682 688 682 C 816 682 944 512 1090 512" stroke-width="98"/>
+  </g>
+</svg>

@@ -1,0 +1,14 @@
+[package]
+name = "tauri-plugin-voice-input"
+version = "0.1.0"
+description = "Polyphony Android 原生语音输入页(EditText 观察输入法文本 → 输入通道)"
+edition = "2021"
+publish = false
+# tauri-build 靠 links 发现插件的 Android 库并写进 gen/android 的 tauri.settings.gradle
+links = "tauri-plugin-voice-input"
+
+[dependencies]
+tauri = { version = "2", default-features = false }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

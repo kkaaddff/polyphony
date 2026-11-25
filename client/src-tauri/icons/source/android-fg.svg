@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- 自适应图标前景层:仅声部辫,透明底。缩放 0.46 并压幅到 220,
+       保证墨迹完全落在 66/108 安全区圆(半径~305)内,任何蒙版形状都不裁。 -->
+  <g transform="translate(512 512) scale(0.46) translate(-512 -512)" fill="none" stroke-linecap="round">
+    <path d="M -80 512 C 48 342 176 342 304 512 C 432 682 560 682 688 512 C 816 342 944 342 1090 512"
+          stroke="#1e1b4b" stroke-opacity="0.85" stroke-width="150"/>
+    <path d="M -80 512 C 48 342 176 342 304 512 C 432 682 560 682 688 512 C 816 342 944 342 1090 512"
+          stroke="#f8fafc" stroke-width="98"/>
+    <path d="M -80 682 C 48 682 176 512 304 512 C 432 512 560 342 688 342 C 816 342 944 512 1090 512"
+          stroke="#1e1b4b" stroke-opacity="0.85" stroke-width="150"/>
+    <path d="M -80 682 C 48 682 176 512 304 512 C 432 512 560 342 688 342 C 816 342 944 512 1090 512"
+          stroke="#7dd3fc" stroke-width="98"/>
+    <path d="M -80 342 C 48 342 176 512 304 512 C 432 512 560 682 688 682 C 816 682 944 512 1090 512"
+          stroke="#1e1b4b" stroke-opacity="0.85" stroke-width="150"/>
+    <path d="M -80 342 C 48 342 176 512 304 512 C 432 512 560 682 688 682 C 816 682 944 512 1090 512"
+          stroke="#f8fafc" stroke-width="98"/>
+  </g>
+</svg>

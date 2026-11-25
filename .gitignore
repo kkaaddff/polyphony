@@ -1,0 +1,71 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/server/node_modules
+/client/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# client 构建产物与 Tauri
+/client/dist
+/client/src-tauri/target
+# tauri 生成的移动端工程(此前仅忽略 gen/schemas,gen/android 一直躺在 untracked)
+/client/src-tauri/gen/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# 服务端运行数据(账号/房间簿;容器内挂 polyphony-data 卷)
+/server/data
+
+# logs
+*.log
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+# ZCode session artifacts
+/.zcode/
+
+# 内部记忆(含运维拓扑,不入公开仓库)
+/.claude/
+
+# 本机凭据(账号 token,绝不入库)
+/secrets/
+local-artifacts
+# tauri icon 会全量再生成;不出包的平台(iOS/MS Store)不入库,64x64 无引用
+/client/src-tauri/icons/ios/
+/client/src-tauri/icons/Square*Logo.png
+/client/src-tauri/icons/StoreLogo.png
+/client/src-tauri/icons/64x64.png
+/test-results/

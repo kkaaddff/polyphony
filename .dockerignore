@@ -1,0 +1,19 @@
+# 构建上下文瘦身：web/server 构建所需之外的都排除
+.git
+.github
+.claude
+.zcode
+docs
+e2e
+deploy
+node_modules
+**/node_modules
+client/dist
+client/src-tauri
+logs
+*.log
+.DS_Store
+.env*
+Dockerfile
+docker-compose.yml
+server/*.test.js
