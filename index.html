@@ -223,7 +223,7 @@ svg.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.75;strok
 .note-bg{position:absolute;inset:0;display:flex;align-items:center;gap:7px;padding:0 18px;font-size:13px;font-weight:640;color:#fff;opacity:0}
 .note-bg svg{width:17px;height:17px}
 .note-bg.del{background:var(--danger);justify-content:flex-end}
-.note-bg.doc{background:var(--accent)}
+.note-bg.send{background:var(--accent)}
 .note{position:relative;padding:12px 15px;border-radius:16px;background:var(--sheet);box-shadow:var(--sh-sm);transition:transform .35s var(--ease)}
 .note .meta{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink-3);margin-bottom:4px}
 .note .meta .dev{color:var(--ink-2);font-weight:590}
@@ -531,16 +531,17 @@ svg.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.75;strok
       <div class="f-copy">
         <span class="kicker"><span class="fic"><svg class="i"><use href="#i-wave"/></svg></span>语音便签</span>
         <h2>手机上说一句，<em class="serif-i">电脑上就有一条</em></h2>
-        <p>在手机上用语音输入说一句话，发送后立刻变成所有设备上的一条便签。整理时：<b>往右滑</b>把便签转成一篇正式文档，<b>往左滑</b>删除。灵感不再散落。</p>
+        <p>在手机上用语音输入说一句话，发送后立刻变成所有设备上的一条便签。整理时：<b>往右滑</b>把这条再发到电脑当前的输入框，<b>往左滑</b>删除；点开详情还能转成一篇正式文档。灵感不再散落。</p>
         <ul class="f-points">
-          <li><svg class="i"><use href="#i-right"/></svg><span><b>右滑 → 转成文档</b>：以便签为正文新建一篇，便签仍保留</span></li>
+          <li><svg class="i"><use href="#i-right"/></svg><span><b>右滑 → 发送到电脑</b>：直接输入到电脑当前光标处，便签仍保留</span></li>
           <li><svg class="i"><use href="#i-left"/></svg><span><b>左滑 → 删除</b>：确认后所有设备同步移除</span></li>
+          <li><svg class="i"><use href="#i-file-plus"/></svg><span><b>点开 → 转成文档</b>：以便签为正文新建一篇</span></li>
           <li><svg class="i"><use href="#i-check"/></svg>可设保留天数，过期自动清理；也能手写追加</li>
         </ul>
       </div>
       <div class="f-demo">
         <div class="stage">
-          <span class="stage-cap">实时演示 · 右滑转文档 / 左滑删除</span>
+          <span class="stage-cap">实时演示 · 右滑发送到电脑 / 左滑删除</span>
           <div class="phone">
             <span class="cam"></span>
             <div class="screen">
@@ -549,12 +550,12 @@ svg.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.75;strok
               <div class="m-scroll">
                 <div class="m-notes" id="notes-demo">
                   <div class="note-wrap" id="nw-1">
-                    <div class="note-bg doc"><svg class="i"><use href="#i-file-plus"/></svg>转为文档</div>
+                    <div class="note-bg send"><svg class="i"><use href="#i-share"/></svg>发送</div>
                     <div class="note-bg del"><svg class="i"><use href="#i-trash"/></svg>删除</div>
                     <div class="note" id="note-1"><div class="meta"><svg class="i"><use href="#i-wave"/></svg><span class="dev">Qicheng</span>· App · macOS</div><p>周五前把 README 的截图换成新界面。</p></div>
                   </div>
                   <div class="note-wrap" id="nw-2">
-                    <div class="note-bg doc"><svg class="i"><use href="#i-file-plus"/></svg>转为文档</div>
+                    <div class="note-bg send"><svg class="i"><use href="#i-share"/></svg>发送</div>
                     <div class="note-bg del"><svg class="i"><use href="#i-trash"/></svg>删除</div>
                     <div class="note" id="note-2"><div class="meta"><svg class="i"><use href="#i-wave"/></svg><span class="dev">Alex</span>· App · Android</div><p>记得给回收站加一个「全部恢复」。</p></div>
                   </div>
@@ -563,7 +564,7 @@ svg.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.75;strok
                   </div>
                 </div>
               </div>
-              <div class="swipe-hint"><span class="l"><svg class="i"><use href="#i-left"/></svg>左滑删除</span><span class="r">右滑转文档<svg class="i"><use href="#i-right"/></svg></span></div>
+              <div class="swipe-hint"><span class="l"><svg class="i"><use href="#i-left"/></svg>左滑删除</span><span class="r">右滑发送到电脑<svg class="i"><use href="#i-right"/></svg></span></div>
             </div>
           </div>
         </div>
@@ -580,7 +581,8 @@ svg.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.75;strok
         <p>打开电脑上的接收开关，手机就成了电脑的无线麦克风：用输入法的语音键说话，文字<b>实时出现在电脑当前的输入框</b>里——聊天、搜索、写邮件都行。</p>
         <ul class="f-points">
           <li><svg class="i"><use href="#i-check"/></svg>同一账号设备间直连，文字不落库、不记日志</li>
-          <li><svg class="i"><use href="#i-check"/></svg>注入其他应用目前支持 Linux + Fcitx5（源码安装插件）</li>
+          <li><svg class="i"><use href="#i-check"/></svg>手机端：Android App，或 iPhone / 任意手机浏览器打开便签页</li>
+          <li><svg class="i"><use href="#i-check"/></svg>注入其他应用支持 Linux + Fcitx5（插件随安装包附带）</li>
           <li><svg class="i"><use href="#i-check"/></svg>macOS / Windows 上可先在设置页实时预览</li>
         </ul>
       </div>
@@ -780,11 +782,11 @@ svg.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.75;strok
     })();
   }
 
-  /* ---- 演示 4:便签右滑转文档 / 左滑删除 ---- */
+  /* ---- 演示 4:便签右滑发送到电脑(便签保留、回弹) / 左滑删除 ---- */
   var n1=document.getElementById("note-1"), n2=document.getElementById("note-2"),
       w1=document.getElementById("nw-1"), w2=document.getElementById("nw-2");
   function bg(wrap, kind, on){
-    var el = wrap.querySelector(kind==="doc"?".note-bg.doc":".note-bg.del");
+    var el = wrap.querySelector(kind==="send"?".note-bg.send":".note-bg.del");
     el.style.opacity = on ? "1" : "0";
   }
   function collapse(wrap){
@@ -798,13 +800,13 @@ svg.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.75;strok
       for(;;){
         // 复位
         n1.classList.remove("gone"); n2.classList.remove("gone");
-        n1.style.transform=""; n2.style.transform=""; bg(w1,"doc",false); bg(w2,"del",false);
+        n1.style.transform=""; n2.style.transform=""; bg(w1,"send",false); bg(w2,"del",false);
         w1.style.height=""; w2.style.height=""; w1.style.overflow=""; w2.style.overflow="";
         await sleep(1500);
-        // 右滑 → 转文档
-        bg(w1,"doc",true); n1.style.transform="translateX(150px)";
+        // 右滑 → 发送到电脑:过阈值松手即发送,卡片回弹,便签保留
+        bg(w1,"send",true); n1.style.transform="translateX(150px)";
         await sleep(1000);
-        n1.classList.add("gone"); await sleep(360); collapse(w1);
+        n1.style.transform=""; await sleep(420); bg(w1,"send",false);
         await sleep(1300);
         // 左滑 → 删除
         bg(w2,"del",true); n2.style.transform="translateX(-150px)";
